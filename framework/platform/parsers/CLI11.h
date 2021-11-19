@@ -74,6 +74,7 @@ class CLI11CommandParser : public CommandParser
 	CAST(FlagCommand);
 #undef CAST
 
+    using CommandParser::parse;
 	void parse(CLI11CommandContext *context, CommandGroup *command);
 	void parse(CLI11CommandContext *context, SubCommand *command);
 	void parse(CLI11CommandContext *context, PositionalCommand *command);

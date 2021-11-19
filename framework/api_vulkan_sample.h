@@ -94,6 +94,7 @@ class ApiVulkanSample : public vkb::VulkanSample
 
 	void resize(uint32_t width, uint32_t height) override;
 
+    using VulkanSample::render;
 	virtual void render(float delta_time) = 0;
 
 	vkb::Device &get_device() override;

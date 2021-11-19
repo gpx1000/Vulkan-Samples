@@ -183,8 +183,6 @@ class Device
   private:
 	const PhysicalDevice &gpu;
 
-	VkSurfaceKHR surface{VK_NULL_HANDLE};
-
 	VkDevice handle{VK_NULL_HANDLE};
 
 	std::vector<VkExtensionProperties> device_extensions;

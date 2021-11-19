@@ -69,7 +69,7 @@ void BatchMode::init(const vkb::CommandParser &parser)
 
 	if (sample_list.empty())
 	{
-		LOGE("No samples found")
+		LOGE("No samples found");
 		throw std::runtime_error{"Can not continue"};
 	}
 

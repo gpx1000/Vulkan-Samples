@@ -33,7 +33,6 @@ struct PairHasher
 	size_t operator()(const TPair &pair) const
 	{
 		std::hash<decltype(pair.first)>  hash1{};
-		std::hash<decltype(pair.second)> hash2{};
 		return hash1(pair.first) * 43 + pair.second;
 	}
 };

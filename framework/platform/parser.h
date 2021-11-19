@@ -220,6 +220,7 @@ class CommandParser
 		Type type{};
 		bool implemented_type_conversion = convert_type(values, &type);
 		assert(implemented_type_conversion && "Failed to retrieve value. Type unsupported");
+        (void)implemented_type_conversion;
 		return type;
 	}
 

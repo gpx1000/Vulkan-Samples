@@ -27,6 +27,15 @@
 
 bool ApiVulkanSample::prepare(vkb::Platform &platform)
 {
+    VK_SAMPLES_UNUSED(resizing);
+    VK_SAMPLES_UNUSED(dest_height);
+    VK_SAMPLES_UNUSED(dest_width);
+    VK_SAMPLES_UNUSED(settings.vsync);
+    VK_SAMPLES_UNUSED(touch_down);
+    VK_SAMPLES_UNUSED(touch_timer);
+#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
+    VK_SAMPLES_UNUSED(debug_report_callback);
+#endif
 	if (!VulkanSample::prepare(platform))
 	{
 		return false;

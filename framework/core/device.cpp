@@ -31,6 +31,7 @@ Device::Device(PhysicalDevice &gpu, VkSurfaceKHR surface, std::unordered_map<con
     gpu{gpu},
     resource_cache{*this}
 {
+    VK_SAMPLES_UNUSED(surface);
 	LOGI("Selected GPU: {}", gpu.get_properties().deviceName);
 
 	// Prepare the device queues

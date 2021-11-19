@@ -26,6 +26,8 @@ namespace core
 ScratchBuffer::ScratchBuffer(Device &device, VkDeviceSize _size) :
     device{device}
 {
+    VK_SAMPLES_UNUSED(memory);
+    VK_SAMPLES_UNUSED(size);
 	VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
 	buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	buffer_info.size  = _size;

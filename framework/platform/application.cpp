@@ -41,8 +41,6 @@ bool Application::prepare(Platform &platform)
 
 void Application::finish()
 {
-	auto execution_time = timer.stop();
-	LOGI("Closing App (Runtime: {:.1f})", execution_time);
 }
 
 void Application::resize(const uint32_t /*width*/, const uint32_t /*height*/)

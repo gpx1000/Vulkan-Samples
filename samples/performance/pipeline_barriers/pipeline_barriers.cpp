@@ -68,9 +68,9 @@ bool PipelineBarriers::prepare(vkb::Platform &platform)
 			{
 				pos.y = pos.y + (k * 100);
 
-				light_color.x = static_cast<float>(rand()) / (RAND_MAX);
-				light_color.y = static_cast<float>(rand()) / (RAND_MAX);
-				light_color.z = static_cast<float>(rand()) / (RAND_MAX);
+				light_color.x = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+				light_color.y = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+				light_color.z = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 
 				vkb::sg::LightProperties props;
 				props.color     = light_color;

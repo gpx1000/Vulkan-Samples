@@ -29,6 +29,8 @@ ShaderBindingTable::ShaderBindingTable(Device &       device,
                                        VmaMemoryUsage memory_usage) :
     device{device}
 {
+    VK_SAMPLES_UNUSED(device_address);
+    VK_SAMPLES_UNUSED(memory);
 	VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
 	buffer_info.usage = VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	buffer_info.size  = handle_count * handle_size_aligned;

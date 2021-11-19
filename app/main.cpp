@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
 	vkb::UnixD2DPlatform platform{argc, argv};
 #else
 #	include "platform/unix/unix_platform.h"
-int main(int argc, char *argv[])s
+int main(int argc, char *argv[])
 {
 #	if defined(VK_USE_PLATFORM_METAL_EXT)
 	vkb::UnixPlatform platform{vkb::UnixType::Mac, argc, argv};
