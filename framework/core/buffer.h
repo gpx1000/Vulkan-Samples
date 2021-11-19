@@ -36,12 +36,14 @@ class Buffer
 	 * @param buffer_usage The usage flags for the VkBuffer
 	 * @param memory_usage The memory usage of the buffer
 	 * @param flags The allocation create flags
+	 * @param queue_family_indices optional queue family indices
 	 */
-	Buffer(Device &                 device,
-	       VkDeviceSize             size,
-	       VkBufferUsageFlags       buffer_usage,
-	       VmaMemoryUsage           memory_usage,
-	       VmaAllocationCreateFlags flags = VMA_ALLOCATION_CREATE_MAPPED_BIT);
+	Buffer(Device &                     device,
+	       VkDeviceSize                 size,
+	       VkBufferUsageFlags           buffer_usage,
+	       VmaMemoryUsage               memory_usage,
+	       VmaAllocationCreateFlags     flags                = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+	       const std::vector<uint32_t> &queue_family_indices = {});
 
 	Buffer(const Buffer &) = delete;
 
@@ -52,6 +54,32 @@ class Buffer
 	Buffer &operator=(const Buffer &) = delete;
 
 	Buffer &operator=(Buffer &&) = delete;
+
+	template <typename T>
+	static std::vector<T> copy(std::unordered_map<std::string, vkb::core::Buffer> &buffers, const char *buffer_name)
+	{
+		auto iter = buffers.find(buffer_name);
+		if (iter == buffers.cend())
+		{
+			return {};
+		}
+		auto &         buffer = iter->second;
+		std::vector<T> out;
+
+		const size_t sz = buffer.get_size();
+		out.resize(sz / sizeof(T));
+		const bool already_mapped = buffer.get_data() != nullptr;
+		if (!already_mapped)
+		{
+			buffer.map();
+		}
+		memcpy(&out[0], buffer.get_data(), sz);
+		if (!already_mapped)
+		{
+			buffer.unmap();
+		}
+		return out;
+	}
 
 	const Device &get_device() const;
 
