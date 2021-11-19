@@ -45,7 +45,7 @@ struct QuickTimer
 		{
 			using namespace std::chrono;
 			const auto dur = duration_cast<microseconds>(clock::now() - start).count();
-			LOGI(fmt::format("{:s} duration: {:f} ms", name, dur / 1000.))
+			LOGI(fmt::format("{:s} duration: {:f} ms", name, dur / 1000.));
 		}
 	}
 };

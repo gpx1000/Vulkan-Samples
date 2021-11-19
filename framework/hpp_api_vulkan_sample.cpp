@@ -31,7 +31,7 @@ bool HPPApiVulkanSample::prepare(vkb::Platform &platform)
 	static vk::DynamicLoader dl;
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr"));
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(get_instance());
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(get_device());
+	VULKAN_HPP_DEFAULT_DISPATCHER.init(hpp_get_device());
 
 	return true;
 }
@@ -46,7 +46,7 @@ size_t HPPApiVulkanSample::get_command_buffers_count() const
 	return draw_cmd_buffers.size();
 }
 
-vk::Device HPPApiVulkanSample::get_device() const
+vk::Device HPPApiVulkanSample::hpp_get_device() const
 {
 	return static_cast<vk::Device>(device->get_handle());
 }

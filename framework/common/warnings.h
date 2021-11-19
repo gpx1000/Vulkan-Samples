@@ -20,8 +20,7 @@
 #	define VKBP_DISABLE_WARNINGS()                             \
 		_Pragma("clang diagnostic push")                        \
 		    _Pragma("clang diagnostic ignored \"-Wall\"")       \
-		        _Pragma("clang diagnostic ignored \"-Wextra\"") \
-		            _Pragma("clang diagnostic ignored \"-Wtautological-compare\"")
+		        _Pragma("clang diagnostic ignored \"-Wextra\"")
 
 #	define VKBP_ENABLE_WARNINGS() \
 		_Pragma("clang diagnostic pop")

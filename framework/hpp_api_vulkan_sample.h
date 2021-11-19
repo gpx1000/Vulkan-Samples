@@ -32,7 +32,7 @@ class HPPApiVulkanSample : public ApiVulkanSample
 
 	vk::CommandBuffer                 get_command_buffer(size_t index) const;
 	size_t                            get_command_buffers_count() const;
-	vk::Device                        get_device() const;
+	vk::Device                        hpp_get_device() const;
 	vk::ClearColorValue const &       get_default_clear_color() const;
 	vk::DescriptorPool                get_descriptor_pool() const;
 	vk::Framebuffer                   get_framebuffer(size_t index) const;

@@ -36,7 +36,7 @@ HPPDynamicUniformBuffers::HPPDynamicUniformBuffers()
 
 HPPDynamicUniformBuffers ::~HPPDynamicUniformBuffers()
 {
-	if (get_device())
+	if (hpp_get_device())
 	{
 		if (ubo_data_dynamic.model)
 		{
@@ -45,10 +45,10 @@ HPPDynamicUniformBuffers ::~HPPDynamicUniformBuffers()
 
 		// Clean up used Vulkan resources
 		// Note : Inherited destructor cleans up resources stored in base class
-		get_device().destroyPipeline(pipeline);
+        hpp_get_device().destroyPipeline(pipeline);
 
-		get_device().destroyPipelineLayout(pipeline_layout);
-		get_device().destroyDescriptorSetLayout(descriptor_set_layout);
+        hpp_get_device().destroyPipelineLayout(pipeline_layout);
+        hpp_get_device().destroyDescriptorSetLayout(descriptor_set_layout);
 	}
 }
 
@@ -215,7 +215,7 @@ void HPPDynamicUniformBuffers::setup_descriptor_pool()
 
 	vk::DescriptorPoolCreateInfo descriptor_pool_create_info({}, 2, pool_sizes);
 
-	descriptor_pool = get_device().createDescriptorPool(descriptor_pool_create_info);
+	descriptor_pool = hpp_get_device().createDescriptorPool(descriptor_pool_create_info);
 }
 
 void HPPDynamicUniformBuffers::setup_descriptor_set_layout()
@@ -227,7 +227,7 @@ void HPPDynamicUniformBuffers::setup_descriptor_set_layout()
 
 	vk::DescriptorSetLayoutCreateInfo descriptor_layout({}, set_layout_bindings);
 
-	descriptor_set_layout = get_device().createDescriptorSetLayout(descriptor_layout);
+	descriptor_set_layout = hpp_get_device().createDescriptorSetLayout(descriptor_layout);
 
 #if defined(ANDROID)
 	vk::PipelineLayoutCreateInfo pipeline_layout_create_info({}, 1, &descriptor_set_layout);
@@ -235,7 +235,7 @@ void HPPDynamicUniformBuffers::setup_descriptor_set_layout()
 	vk::PipelineLayoutCreateInfo  pipeline_layout_create_info({}, descriptor_set_layout);
 #endif
 
-	pipeline_layout = get_device().createPipelineLayout(pipeline_layout_create_info);
+	pipeline_layout = hpp_get_device().createPipelineLayout(pipeline_layout_create_info);
 }
 
 void HPPDynamicUniformBuffers::setup_descriptor_set()
@@ -246,7 +246,7 @@ void HPPDynamicUniformBuffers::setup_descriptor_set()
 	vk::DescriptorSetAllocateInfo alloc_info(get_descriptor_pool(), descriptor_set_layout);
 #endif
 
-	descriptor_set = get_device().allocateDescriptorSets(alloc_info).front();
+	descriptor_set = hpp_get_device().allocateDescriptorSets(alloc_info).front();
 
 	vk::DescriptorBufferInfo view_buffer_descriptor(uniform_buffers.view->get_handle(), 0, VK_WHOLE_SIZE);
 	vk::DescriptorBufferInfo dynamic_buffer_descriptor(uniform_buffers.dynamic->get_handle(), 0, dynamic_alignment);
@@ -257,7 +257,7 @@ void HPPDynamicUniformBuffers::setup_descriptor_set()
 	     // Binding 1 : Instance matrix as dynamic uniform buffer
 	     {descriptor_set, 1, {}, vk::DescriptorType::eUniformBufferDynamic, {}, dynamic_buffer_descriptor}}};
 
-	get_device().updateDescriptorSets(write_descriptor_sets, {});
+    hpp_get_device().updateDescriptorSets(write_descriptor_sets, {});
 }
 
 void HPPDynamicUniformBuffers::prepare_pipelines()
@@ -321,7 +321,7 @@ void HPPDynamicUniformBuffers::prepare_pipelines()
 	                                                    {},
 	                                                    -1);
 
-	pipeline = get_device().createGraphicsPipeline(pipeline_cache, pipeline_create_info).value;
+	pipeline = hpp_get_device().createGraphicsPipeline(pipeline_cache, pipeline_create_info).value;
 }
 
 // Prepare and initialize uniform buffer containing shader uniforms
