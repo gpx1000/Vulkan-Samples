@@ -20,9 +20,9 @@
 VKBP_DISABLE_WARNINGS()
 #include <SPIRV/GLSL.std.450.h>
 #include <SPIRV/GlslangToSpv.h>
-#include <StandAlone/ResourceLimits.h>
 #include <glslang/Include/ShHandle.h>
 #include <glslang/OSDependent/osinclude.h>
+#include <glslang_default_resource_limits.h>
 VKBP_ENABLE_WARNINGS()
 
 namespace vkb
