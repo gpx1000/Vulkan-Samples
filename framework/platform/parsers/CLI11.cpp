@@ -1,4 +1,4 @@
-/* Copyright (c) 2021, Arm Limited and Contributors
+/* Copyright (c) 2021-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,8 +17,10 @@
 
 #include "CLI11.h"
 
-#include "common/logging.h"
+#include <climits>
+
 #include "common/strings.h"
+#include "core/util/logging.hpp"
 
 namespace vkb
 {
@@ -100,7 +102,8 @@ void CLI11CommandParser::parse(CLI11CommandContext *context, FlagCommand *comman
 {
 	CLI::Option *flag;
 
-	switch (command->get_flag_type())
+	auto flagType = command->get_flag_type();
+	switch (flagType)
 	{
 		case FlagType::FlagOnly:
 			flag = context->cli11->add_flag(command->get_name(), command->get_help_line());
@@ -109,6 +112,13 @@ void CLI11CommandParser::parse(CLI11CommandContext *context, FlagCommand *comman
 		case FlagType::ManyValues:
 			flag = context->cli11->add_option(command->get_name(), command->get_help_line());
 			break;
+		default:
+			throw std::runtime_error("Unknown flag type");
+	}
+
+	if (flagType == FlagType::ManyValues)
+	{
+		flag = flag->expected(1, INT_MAX);
 	}
 
 	_options.emplace(command, flag);
@@ -215,6 +225,11 @@ bool CLI11CommandParser::parse(const std::vector<Command *> &commands)
 
 	return cli11_parse(_cli11.get());
 }
+
+// A header is defining success as a macro, which is causing a conflict with CLI11
+#ifdef Success
+#	undef Success
+#endif
 
 bool CLI11CommandParser::cli11_parse(CLI::App *app)
 {

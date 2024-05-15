@@ -1,5 +1,5 @@
-/* Copyright (c) 2018-2021, Arm Limited and Contributors
- * Copyright (c) 2019-2021, Sascha Willems
+/* Copyright (c) 2018-2024, Arm Limited and Contributors
+ * Copyright (c) 2019-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -51,8 +51,8 @@ class Texture;
 /**
  * @brief Helper Function to change array type T to array type Y
  * Create a struct that can be used with std::transform so that we do not need to recreate lambda functions
- * @param T 
- * @param Y 
+ * @param T
+ * @param Y
  */
 template <class T, class Y>
 struct TypeCast
@@ -69,7 +69,7 @@ struct TypeCast
 class GLTFLoader
 {
   public:
-	GLTFLoader(Device const &device);
+	GLTFLoader(Device &device);
 
 	virtual ~GLTFLoader() = default;
 
@@ -79,7 +79,7 @@ class GLTFLoader
 	 * @brief Loads the first model from a GLTF file for use in simpler samples
 	 *        makes use of the Vertex struct in vulkan_example_base.h
 	 */
-	std::unique_ptr<sg::SubMesh> read_model_from_file(const std::string &file_name, uint32_t index);
+	std::unique_ptr<sg::SubMesh> read_model_from_file(const std::string &file_name, uint32_t index, bool storage_buffer = false);
 
   protected:
 	virtual std::unique_ptr<sg::Node> parse_node(const tinygltf::Node &gltf_node, size_t index) const;
@@ -98,7 +98,7 @@ class GLTFLoader
 
 	virtual std::unique_ptr<sg::PBRMaterial> create_default_material();
 
-	virtual std::unique_ptr<sg::Sampler> create_default_sampler();
+	virtual std::unique_ptr<sg::Sampler> create_default_sampler(int filter);
 
 	virtual std::unique_ptr<sg::Camera> create_default_camera();
 
@@ -122,7 +122,7 @@ class GLTFLoader
 	 */
 	tinygltf::Value *get_extension(tinygltf::ExtensionMap &tinygltf_extensions, const std::string &extension);
 
-	Device const &device;
+	Device &device;
 
 	tinygltf::Model model;
 
@@ -134,6 +134,6 @@ class GLTFLoader
   private:
 	sg::Scene load_scene(int scene_index = -1);
 
-	std::unique_ptr<sg::SubMesh> load_model(uint32_t index);
+	std::unique_ptr<sg::SubMesh> load_model(uint32_t index, bool storage_buffer = false);
 };
 }        // namespace vkb

@@ -1,4 +1,4 @@
-/* Copyright (c) 2018-2022, Arm Limited and Contributors
+/* Copyright (c) 2018-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,12 +19,10 @@
 
 #include "common/error.h"
 
-VKBP_DISABLE_WARNINGS()
 #include "common/glm_common.h"
 #include "glm/gtx/quaternion.hpp"
-VKBP_ENABLE_WARNINGS()
 
-#include "platform/filesystem.h"
+#include "filesystem/legacy.h"
 #include "rendering/pipeline_state.h"
 #include "rendering/render_context.h"
 #include "scene_graph/components/sub_mesh.h"
@@ -106,10 +104,5 @@ sg::Light &add_spot_light(sg::Scene &scene, const glm::vec3 &position, const glm
  * @return Node where the script was attached as component
  */
 sg::Node &add_free_camera(sg::Scene &scene, const std::string &node_name, VkExtent2D extent);
-
-namespace graphs
-{
-bool generate_all(RenderContext &context, sg::Scene &scene);
-}
 
 }        // namespace vkb

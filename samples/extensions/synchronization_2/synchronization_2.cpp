@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2023, Sascha Willems
+/* Copyright (c) 2021-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -27,7 +27,7 @@ Synchronization2::Synchronization2()
 	title       = "Compute shader N-body simulation using VK_KHR_synchronization2";
 	camera.type = vkb::CameraType::LookAt;
 
-	// Note: Using Reversed depth-buffer for increased precision, so Z-Near and Z-Far are flipped
+	// Note: Using reversed depth-buffer for increased precision, so Z-Near and Z-Far are flipped
 	camera.set_perspective(60.0f, static_cast<float>(width) / static_cast<float>(height), 512.0f, 0.1f);
 	camera.set_rotation(glm::vec3(0.0f, 0.0f, 0.0f));
 	camera.set_translation(glm::vec3(0.0f, 0.0f, -14.0f));
@@ -39,7 +39,7 @@ Synchronization2::Synchronization2()
 
 Synchronization2::~Synchronization2()
 {
-	if (device)
+	if (has_device())
 	{
 		// Graphics
 		graphics.uniform_buffer.reset();
@@ -265,7 +265,7 @@ void Synchronization2::prepare_storage_buffers()
 	// Initial particle positions
 	std::vector<Particle> particle_buffer(num_particles);
 
-	std::default_random_engine      rnd_engine(platform->get_window().get_window_mode() == vkb::Window::Mode::Headless ? 0 : static_cast<unsigned>(time(nullptr)));
+	std::default_random_engine      rnd_engine(window->get_window_mode() == vkb::Window::Mode::Headless ? 0 : static_cast<unsigned>(time(nullptr)));
 	std::normal_distribution<float> rnd_distribution(0.0f, 1.0f);
 
 	for (uint32_t i = 0; i < static_cast<uint32_t>(attractors.size()); i++)
@@ -307,8 +307,7 @@ void Synchronization2::prepare_storage_buffers()
 
 	// Staging
 	// SSBO won't be changed on the host after upload so copy to device local memory
-	vkb::core::Buffer staging_buffer{get_device(), storage_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY};
-	staging_buffer.update(particle_buffer.data(), static_cast<size_t>(storage_buffer_size));
+	vkb::core::Buffer staging_buffer = vkb::core::Buffer::create_staging_buffer(get_device(), particle_buffer);
 
 	compute.storage_buffer = std::make_unique<vkb::core::Buffer>(get_device(),
 	                                                             storage_buffer_size,
@@ -316,7 +315,7 @@ void Synchronization2::prepare_storage_buffers()
 	                                                             VMA_MEMORY_USAGE_GPU_ONLY);
 
 	// Copy from staging buffer to storage buffer
-	VkCommandBuffer copy_command = device->create_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+	VkCommandBuffer copy_command = get_device().create_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
 	VkBufferCopy    copy_region  = {};
 	copy_region.size             = storage_buffer_size;
 	vkCmdCopyBuffer(copy_command, staging_buffer.get_handle(), compute.storage_buffer->get_handle(), 1, &copy_region);
@@ -340,7 +339,7 @@ void Synchronization2::prepare_storage_buffers()
 		vkCmdPipelineBarrier2KHR(copy_command, &dependency_info);
 	}
 
-	device->flush_command_buffer(copy_command, queue, true);
+	get_device().flush_command_buffer(copy_command, queue, true);
 }
 
 void Synchronization2::setup_descriptor_pool()
@@ -717,14 +716,14 @@ void Synchronization2::prepare_compute()
 		fence_info.flags = VK_FLAGS_NONE;
 
 		VkFence fence;
-		VK_CHECK(vkCreateFence(device->get_handle(), &fence_info, nullptr, &fence));
+		VK_CHECK(vkCreateFence(get_device().get_handle(), &fence_info, nullptr, &fence));
 		// Submit to the *compute* queue
 		VkResult result = vkQueueSubmit(compute.queue, 1, &submit_info, fence);
 		// Wait for the fence to signal that command buffer has finished executing
-		VK_CHECK(vkWaitForFences(device->get_handle(), 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
-		vkDestroyFence(device->get_handle(), fence, nullptr);
+		VK_CHECK(vkWaitForFences(get_device().get_handle(), 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
+		vkDestroyFence(get_device().get_handle(), fence, nullptr);
 
-		vkFreeCommandBuffers(device->get_handle(), compute.command_pool, 1, &transfer_command);
+		vkFreeCommandBuffers(get_device().get_handle(), compute.command_pool, 1, &transfer_command);
 	}
 }
 
@@ -818,9 +817,9 @@ void Synchronization2::draw()
 	VK_CHECK(vkQueueSubmit2KHR(compute.queue, 1, &compute_submit_info, VK_NULL_HANDLE));
 }
 
-bool Synchronization2::prepare(vkb::Platform &platform)
+bool Synchronization2::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!ApiVulkanSample::prepare(platform))
+	if (!ApiVulkanSample::prepare(options))
 	{
 		return false;
 	}

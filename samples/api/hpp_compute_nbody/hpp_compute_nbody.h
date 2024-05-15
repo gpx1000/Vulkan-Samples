@@ -1,4 +1,4 @@
-/* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+/* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "hpp_api_vulkan_sample.h"
+#include <hpp_api_vulkan_sample.h>
 
 #if defined(__ANDROID__)
 // Lower particle count on Android for performance reasons
@@ -61,6 +61,20 @@ class HPPComputeNBody : public HPPApiVulkanSample
 		ComputeUBO                            ubo;
 		std::unique_ptr<vkb::core::HPPBuffer> uniform_buffer;        // Uniform buffer object containing particle system parameters
 		uint32_t                              work_group_size = 128;
+
+		void destroy(vk::Device device)
+		{
+			storage_buffer.reset();
+			uniform_buffer.reset();
+			device.destroyPipeline(pipeline_calculate);
+			device.destroyPipeline(pipeline_integrate);
+			device.destroyPipelineLayout(pipeline_layout);
+			// no need to free the descriptor_set, as it's implicitly free'd with the descriptor_pool
+			device.destroyDescriptorSetLayout(descriptor_set_layout);
+			device.destroySemaphore(semaphore);
+			device.freeCommandBuffers(command_pool, command_buffer);
+			device.destroyCommandPool(command_pool);
+		}
 	};
 
 	// Resources for the graphics part of the example
@@ -81,6 +95,16 @@ class HPPComputeNBody : public HPPApiVulkanSample
 		vk::Semaphore                         semaphore;        // Execution dependency between compute & graphic submission
 		GraphicsUBO                           ubo;
 		std::unique_ptr<vkb::core::HPPBuffer> uniform_buffer;        // Contains scene matrices
+
+		void destroy(vk::Device device)
+		{
+			uniform_buffer.reset();
+			device.destroyPipeline(pipeline);
+			device.destroyPipelineLayout(pipeline_layout);
+			// no need to free the descriptor_set, as it's implicitly free'd with the descriptor_pool
+			device.destroyDescriptorSetLayout(descriptor_set_layout);
+			device.destroySemaphore(semaphore);
+		}
 	};
 
 	// SSBO particle declaration
@@ -94,40 +118,44 @@ class HPPComputeNBody : public HPPApiVulkanSample
 	{
 		HPPTexture gradient;
 		HPPTexture particle;
+
+		void destroy(vk::Device device)
+		{
+			device.destroySampler(particle.sampler);
+			device.destroySampler(gradient.sampler);
+		}
 	};
 
   private:
-	// from platform::HPPApplication
-	bool prepare(vkb::platform::HPPPlatform &platform) override;
+	// from vkb::Application
+	bool prepare(const vkb::ApplicationOptions &options) override;
 	bool resize(const uint32_t width, const uint32_t height) override;
 
-	// from HPPVulkanSample
+	// from vkb::VulkanSample
 	void request_gpu_features(vkb::core::HPPPhysicalDevice &gpu) override;
 
 	// from HPPApiVulkanSample
 	void build_command_buffers() override;
 	void render(float delta_time) override;
 
-	void build_compute_command_buffer();
-	void build_compute_transfer_command_buffer(vk::CommandBuffer command_buffer) const;
-	void build_copy_command_buffer(vk::CommandBuffer command_buffer, vk::Buffer staging_buffer, vk::DeviceSize buffer_size) const;
-	void create_compute_descriptor_set_layout();
-	void create_compute_pipeline_particle_integration();
-	void create_compute_pipeline_particle_movement();
-	void create_compute_pipelines();
-	void prepare_compute_storage_buffers();
-	void create_descriptor_pool();
-	void create_graphics_descriptor_set_layout();
-	void create_graphics_pipeline();
-	void draw();
-	void initializeCamera();
-	void load_assets();
-	void prepare_compute();
-	void prepare_graphics();
-	void update_compute_descriptor_set();
-	void update_compute_uniform_buffers(float delta_time);
-	void update_graphics_descriptor_set();
-	void update_graphics_uniform_buffers();
+	void                    build_compute_command_buffer();
+	void                    build_compute_transfer_command_buffer(vk::CommandBuffer command_buffer) const;
+	void                    build_copy_command_buffer(vk::CommandBuffer command_buffer, vk::Buffer staging_buffer, vk::DeviceSize buffer_size) const;
+	vk::DescriptorSetLayout create_compute_descriptor_set_layout();
+	vk::Pipeline            create_compute_pipeline(vk::PipelineShaderStageCreateInfo const &stage);
+	vk::DescriptorPool      create_descriptor_pool();
+	vk::DescriptorSetLayout create_graphics_descriptor_set_layout();
+	vk::Pipeline            create_graphics_pipeline();
+	void                    draw();
+	void                    initializeCamera();
+	void                    load_assets();
+	void                    prepare_compute();
+	void                    prepare_compute_storage_buffers();
+	void                    prepare_graphics();
+	void                    update_compute_descriptor_set();
+	void                    update_compute_uniform_buffers(float delta_time);
+	void                    update_graphics_descriptor_set();
+	void                    update_graphics_uniform_buffers();
 
   private:
 	Compute  compute;

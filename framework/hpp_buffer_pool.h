@@ -18,6 +18,7 @@
 #pragma once
 
 #include "buffer_pool.h"
+#include <core/hpp_buffer.h>
 
 namespace vkb
 {
@@ -41,6 +42,11 @@ class HPPBufferAllocation : private vkb::BufferAllocation
 	{
 		return static_cast<vk::DeviceSize>(vkb::BufferAllocation::get_offset());
 	}
+
+	vk::DeviceSize get_size() const
+	{
+		return static_cast<vk::DeviceSize>(vkb::BufferAllocation::get_size());
+	}
 };
 
 /**
@@ -50,6 +56,17 @@ class HPPBufferAllocation : private vkb::BufferAllocation
  */
 class HPPBufferBlock : private vkb::BufferBlock
 {
+  public:
+	vkb::HPPBufferAllocation allocate(vk::DeviceSize size)
+	{
+		vkb::BufferAllocation ba = vkb::BufferBlock::allocate(static_cast<VkDeviceSize>(size));
+		return std::move(*(reinterpret_cast<vkb::HPPBufferAllocation *>(&ba)));
+	}
+
+	bool can_allocate(vk::DeviceSize size) const
+	{
+		return vkb::BufferBlock::can_allocate(static_cast<VkDeviceSize>(size));
+	}
 };
 
 /**
@@ -59,5 +76,19 @@ class HPPBufferBlock : private vkb::BufferBlock
  */
 class HPPBufferPool : private vkb::BufferPool
 {
+  public:
+	using vkb::BufferPool::reset;
+
+	HPPBufferPool(
+	    vkb::core::HPPDevice &device, vk::DeviceSize block_size, vk::BufferUsageFlags usage, VmaMemoryUsage memory_usage = VMA_MEMORY_USAGE_CPU_TO_GPU) :
+	    vkb::BufferPool(
+	        reinterpret_cast<vkb::Device &>(device), static_cast<VkDeviceSize>(block_size), static_cast<VkBufferUsageFlags>(usage), memory_usage)
+	{
+	}
+
+	vkb::HPPBufferBlock &request_buffer_block(vk::DeviceSize minimum_size, bool minimal = false)
+	{
+		return reinterpret_cast<vkb::HPPBufferBlock &>(vkb::BufferPool::request_buffer_block(static_cast<VkDeviceSize>(minimum_size), minimal));
+	}
 };
 }        // namespace vkb

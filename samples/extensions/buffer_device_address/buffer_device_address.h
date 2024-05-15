@@ -1,4 +1,4 @@
-/* Copyright (c) 2021, Arm Limited and Contributors
+/* Copyright (c) 2021-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -32,7 +32,7 @@ class BufferDeviceAddress : public ApiVulkanSample
 	virtual void render(float delta_time) override;
 	virtual void build_command_buffers() override;
 	virtual void on_update_ui_overlay(vkb::Drawer &drawer) override;
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	void             create_pipelines();
 	VkPipelineLayout create_pipeline_layout(bool graphics);
@@ -72,4 +72,4 @@ class BufferDeviceAddress : public ApiVulkanSample
 	uint32_t                              num_indices_per_mesh{};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_buffer_device_address();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_buffer_device_address();

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2021, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,14 +21,10 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
-import android.os.Environment;
-import android.provider.Settings;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Toast;
@@ -70,25 +66,12 @@ public class SampleLauncherActivity extends AppCompatActivity {
         setSupportActionBar(toolbar);
 
         if (loadNativeLibrary(getResources().getString(R.string.native_lib_name))) {
-            // Initialize cpp android platform
-            File external_files_dir = getExternalFilesDir("");
-            File temp_files_dir = getCacheDir();
-            if (external_files_dir != null && temp_files_dir != null) {
-                // User no longer has permissions to access applications' storage, save files in
-                // top level (shared) external storage directory
-                String shared_storage = external_files_dir.getPath().split(Pattern.quote("Android"))[0];
-                external_files_dir = new File(shared_storage, getPackageName());
-                initFilePath(external_files_dir.toString(), temp_files_dir.toString());
-            }
-
             // Get sample info from cpp cmake generated file
             samples = new SampleStore(Arrays.asList(getSamples()));
         }
 
         // Required Permissions
         permissions = new ArrayList<>();
-        permissions.add(new Permission(Manifest.permission.WRITE_EXTERNAL_STORAGE, 1));
-        permissions.add(new Permission(Manifest.permission.READ_EXTERNAL_STORAGE, 2));
 
         if (checkPermissions()) {
             // Permissions previously granted skip requesting them
@@ -97,18 +80,6 @@ public class SampleLauncherActivity extends AppCompatActivity {
         } else {
             // Chain request permissions
             requestNextPermission();
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager())
-            {
-                // Prompt the user to "Allow access to all files"
-                Intent intent = new Intent();
-                                    intent.setAction(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                                    Uri uri = Uri.fromParts("package", this.getPackageName(), null);
-                                    intent.setData(uri);
-                startActivity(intent);
-            }
         }
     }
 
@@ -146,6 +117,7 @@ public class SampleLauncherActivity extends AppCompatActivity {
             arguments.add("batch");
             arguments.add("--category");
             arguments.add(category);
+            arguments.add("--tag");
             arguments.addAll(sampleListView.dialog.getFilter());
 
             String[] sa = {};
@@ -361,9 +333,4 @@ public class SampleLauncherActivity extends AppCompatActivity {
      * @param args The arguments that are to be passed to the app
      */
     private native void sendArgumentsToPlatform(String[] args);
-
-    /**
-     * @brief Initiate the file system for the Native Application
-     */
-    private native void initFilePath(String external_dir, String temp_path);
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2023, Sascha Willems
+/* Copyright (c) 2019-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -42,7 +42,7 @@ PushDescriptors::PushDescriptors()
 
 PushDescriptors::~PushDescriptors()
 {
-	if (device)
+	if (has_device())
 	{
 		vkDestroyPipeline(get_device().get_handle(), pipeline, nullptr);
 		vkDestroyPipelineLayout(get_device().get_handle(), pipeline_layout, nullptr);
@@ -111,7 +111,7 @@ void PushDescriptors::build_command_buffers()
 		{
 			// Instead of preparing the descriptor sets up-front, using push descriptors we can set (push) them inside of a command buffer
 			// This allows a more dynamic approach without the need to create descriptor sets for each model
-			// Note: dstSet for each descriptor set write is left at zero as this is ignored when ushing push descriptors
+			// Note: dstSet for each descriptor set write is left at zero as this is ignored when using push descriptors
 
 			std::array<VkWriteDescriptorSet, 3> write_descriptor_sets{};
 
@@ -196,7 +196,7 @@ void PushDescriptors::prepare_pipelines()
 	VkPipelineColorBlendStateCreateInfo color_blend_state =
 	    vkb::initializers::pipeline_color_blend_state_create_info(1, &blend_attachment_state);
 
-	// Note: Using Reversed depth-buffer for increased precision, so Greater depth values are kept
+	// Note: Using reversed depth-buffer for increased precision, so Greater depth values are kept
 	VkPipelineDepthStencilStateCreateInfo depth_stencil_state =
 	    vkb::initializers::pipeline_depth_stencil_state_create_info(VK_TRUE, VK_TRUE, VK_COMPARE_OP_GREATER);
 
@@ -312,9 +312,9 @@ void PushDescriptors::draw()
 	ApiVulkanSample::submit_frame();
 }
 
-bool PushDescriptors::prepare(vkb::Platform &platform)
+bool PushDescriptors::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!ApiVulkanSample::prepare(platform))
+	if (!ApiVulkanSample::prepare(options))
 	{
 		return false;
 	}
@@ -331,7 +331,8 @@ bool PushDescriptors::prepare(vkb::Platform &platform)
 	}
 
 	// Get device push descriptor properties (to display them)
-	PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2KHR>(vkGetInstanceProcAddr(instance->get_handle(), "vkGetPhysicalDeviceProperties2KHR"));
+	PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR =
+	    reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2KHR>(vkGetInstanceProcAddr(get_instance().get_handle(), "vkGetPhysicalDeviceProperties2KHR"));
 	if (!vkGetPhysicalDeviceProperties2KHR)
 	{
 		throw std::runtime_error("Could not get a valid function pointer for vkGetPhysicalDeviceProperties2KHR");
@@ -346,7 +347,7 @@ bool PushDescriptors::prepare(vkb::Platform &platform)
 	    End of extension specific functions
 	*/
 
-	// Note: Using Revsered depth-buffer for increased precision, so Znear and Zfar are flipped
+	// Note: Using reversed depth-buffer for increased precision, so Znear and Zfar are flipped
 	camera.type = vkb::CameraType::LookAt;
 	camera.set_perspective(60.0f, static_cast<float>(width) / height, 512.0f, 0.1f);
 	camera.set_rotation(glm::vec3(0.0f, 0.0f, 0.0f));
@@ -390,7 +391,7 @@ void PushDescriptors::on_update_ui_overlay(vkb::Drawer &drawer)
 	}
 }
 
-std::unique_ptr<vkb::VulkanSample> create_push_descriptors()
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_push_descriptors()
 {
 	return std::make_unique<PushDescriptors>();
 }

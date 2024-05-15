@@ -1,4 +1,4 @@
-/* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+/* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,22 +17,21 @@
 
 #pragma once
 
-#include <hpp_vulkan_sample.h>
-
+#include "vulkan_sample.h"
 #include <scene_graph/components/camera.h>
 
 /**
  * @brief Using triple buffering over double buffering, using Vulkan-Hpp
  */
-class HPPSwapchainImages : public vkb::HPPVulkanSample
+class HPPSwapchainImages : public vkb::VulkanSample<vkb::BindingType::Cpp>
 {
   public:
 	HPPSwapchainImages();
 
   private:
-	// from vkb::HPPVulkanSample
+	// from vkb::VulkanSample
 	virtual void draw_gui() override;
-	virtual bool prepare(vkb::platform::HPPPlatform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 	virtual void update(float delta_time) override;
 
   private:

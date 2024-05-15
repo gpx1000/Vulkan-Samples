@@ -1,5 +1,5 @@
 '''
-Copyright (c) 2019-2021, Arm Limited and Contributors
+Copyright (c) 2019-2023, Arm Limited and Contributors
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -16,22 +16,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 '''
 
-import sys, os, platform, subprocess, shutil
+import os, platform, subprocess, shutil
 
 generate_sample_script = "bldsys/scripts/generate_sample"
 script_path            = os.path.dirname(os.path.realpath(__file__))
 root_path              = os.path.join(script_path, "../../")
 
-def add_sample():
-    generate_sample_path = os.path.join(root_path, generate_sample_script) 
+def add_sample(sample_name, template_name):
+    generate_sample_path = os.path.join(root_path, generate_sample_script)
     if platform.system() == "Windows":
         generate_sample_path += ".bat"
     else:
         generate_sample_path += ".sh"
 
+    arguments = [generate_sample_path, sample_name, "api", template_name]
     result = True
     try:
-        subprocess.run(generate_sample_path, cwd=root_path)
+        subprocess.run(arguments, cwd=root_path)
     except FileNotFoundError:
         print("Error: Couldn't find generate sample script")
         result = False
@@ -46,6 +47,10 @@ def clear(platform):
     except OSError:
         pass
 
+def rm_path(path):
+    if os.listdir(path):
+        shutil.rmtree(path)
+
 def build():
     clear("windows")
     clear("linux")
@@ -55,13 +60,13 @@ def build():
     generate_command = ""
     build_command = ""
     if platform.system() == "Windows":
-        generate_command = "cmake -G\"Visual Studio 15 2017 Win64\" -H. -Bbuild/windows -DVKB_BUILD_SAMPLES=ON"
+        generate_command = "cmake -G\"Visual Studio 15 2017 Win64\" -Bbuild/windows -DVKB_BUILD_SAMPLES=ON"
         build_command = "cmake --build build/windows --config Release --target vulkan_samples"
     elif platform.system() == "Linux":
-        generate_command = "cmake -G \"Unix Makefiles\" -H. -Bbuild/linux -DCMAKE_BUILD_TYPE=Release -DVKB_BUILD_SAMPLES=ON"
+        generate_command = "cmake -G \"Unix Makefiles\" -Bbuild/linux -DCMAKE_BUILD_TYPE=Release -DVKB_BUILD_SAMPLES=ON"
         build_command = "cmake --build build/linux --config Release --target vulkan_samples"
     elif platform.system() == "Darwin":
-        generate_command = "cmake -H. -Bbuild/mac -DCMAKE_BUILD_TYPE=Release -DVKB_BUILD_SAMPLES=ON"
+        generate_command = "cmake . -Bbuild/mac -DCMAKE_BUILD_TYPE=Release -DVKB_BUILD_SAMPLES=ON"
         build_command = "cmake --build build/mac --config Release --target vulkan_samples"
     else:
         print("Error: Platform not supported")
@@ -80,12 +85,11 @@ def build():
 
 if __name__ == "__main__":
     result = False
-    if(add_sample() and build()):
+    if(add_sample("SampleTest", "sample") and add_sample("SampleTestApi", "sample_api") and build()):
         result = True
 
-    sample_path = os.path.join(root_path, "samples/api/sample_test")
-    if os.listdir(sample_path):
-        shutil.rmtree(sample_path)
+    rm_path(os.path.join(root_path, "samples/api/sample_test"))
+    rm_path(os.path.join(root_path, "samples/api/sample_test_api"))
 
     if result:
         print("Generate Sample Test: Passed")
@@ -93,5 +97,4 @@ if __name__ == "__main__":
     else:
         print("Generate Sample Test: Failed")
         exit(1)
-        
-    
+

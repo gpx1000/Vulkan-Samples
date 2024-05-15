@@ -1,4 +1,4 @@
-/* Copyright (c) 2022-2023, Holochip
+/* Copyright (c) 2022-2024, Holochip
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -41,7 +41,7 @@ Portability::Portability() :
 
 Portability::~Portability()
 {
-	if (device)
+	if (has_device())
 	{
 		vkDestroyPipeline(get_device().get_handle(), pipelines.skysphere, nullptr);
 		vkDestroyPipeline(get_device().get_handle(), pipelines.sphere, nullptr);
@@ -85,7 +85,7 @@ VkPipelineShaderStageCreateInfo Portability::debug_load_shader(const std::string
 	VkPipelineShaderStageCreateInfo shader_stage = {};
 	shader_stage.sType                           = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shader_stage.stage                           = stage;
-	shader_stage.module                          = vkb::load_shader(file, device->get_handle(), stage);
+	shader_stage.module                          = vkb::load_shader(file, get_device().get_handle(), stage);
 	shader_stage.pName                           = "main";
 	assert(shader_stage.module != VK_NULL_HANDLE);
 	shader_modules.push_back(shader_stage.module);
@@ -671,7 +671,7 @@ void Portability::prepare_pipelines()
 	        1,
 	        &blend_attachment_state);
 
-	// Note: Using Reversed depth-buffer for increased precision, so Greater depth values are kept
+	// Note: Using reversed depth-buffer for increased precision, so Greater depth values are kept
 	VkPipelineDepthStencilStateCreateInfo depth_stencil_state =
 	    vkb::initializers::pipeline_depth_stencil_state_create_info(
 	        VK_FALSE,
@@ -835,9 +835,9 @@ void Portability::draw()
 	ApiVulkanSample::submit_frame();
 }
 
-bool Portability::prepare(vkb::Platform &platform)
+bool Portability::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!ApiVulkanSample::prepare(platform))
+	if (!ApiVulkanSample::prepare(options))
 	{
 		return false;
 	}
@@ -846,7 +846,7 @@ bool Portability::prepare(vkb::Platform &platform)
 	camera.set_position(glm::vec3(0.0f, 0.0f, -6.0f));
 	camera.set_rotation(glm::vec3(0.0f, 180.0f, 0.0f));
 
-	// Note: Using Reversed depth-buffer for increased precision, so Znear and Zfar are flipped
+	// Note: Using reversed depth-buffer for increased precision, so Znear and Zfar are flipped
 	camera.set_perspective(60.0f, static_cast<float>(width) / static_cast<float>(height), 256.0f, 0.1f);
 
 #ifdef VK_ENABLE_BETA_EXTENSIONS
@@ -924,11 +924,11 @@ void Portability::on_update_ui_overlay(vkb::Drawer &drawer)
 	{
 		if (drawer.checkbox("Bloom", &bloom))
 		{
-			build_command_buffers();
+			rebuild_command_buffers();
 		}
 		if (drawer.checkbox("skysphere", &display_skysphere))
 		{
-			build_command_buffers();
+			rebuild_command_buffers();
 		}
 	}
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2021, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,15 +17,8 @@
 
 #include "unix_platform.h"
 
-#include "common/error.h"
-
 #include "platform/glfw_window.h"
 #include "platform/headless_window.h"
-
-VKBP_DISABLE_WARNINGS()
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/spdlog.h>
-VKBP_ENABLE_WARNINGS()
 
 #ifndef VK_MVK_MACOS_SURFACE_EXTENSION_NAME
 #	define VK_MVK_MACOS_SURFACE_EXTENSION_NAME "VK_MVK_macos_surface"
@@ -49,56 +42,10 @@ VKBP_ENABLE_WARNINGS()
 
 namespace vkb
 {
-namespace
-{
-inline const std::string get_temp_path_from_environment()
-{
-	std::string temp_path = "/tmp/";
 
-	if (const char *env_ptr = std::getenv("TMPDIR"))
-	{
-		temp_path = std::string(env_ptr) + "/";
-	}
-
-	return temp_path;
-}
-}        // namespace
-
-namespace fs
+UnixPlatform::UnixPlatform(const PlatformContext &context, const UnixType &type) :
+    Platform{context}, type{type}
 {
-void create_directory(const std::string &path)
-{
-	if (!is_directory(path))
-	{
-		mkdir(path.c_str(), 0777);
-	}
-}
-}        // namespace fs
-
-UnixPlatform::UnixPlatform(const UnixType &type, int argc, char **argv) :
-    type{type}
-{
-	Platform::set_arguments({argv + 1, argv + argc});
-	Platform::set_temp_directory(get_temp_path_from_environment());
-}
-
-const char *UnixPlatform::get_surface_extension()
-{
-	if (type == UnixType::Mac)
-	{
-		return VK_EXT_METAL_SURFACE_EXTENSION_NAME;
-	}
-
-#if defined(VK_USE_PLATFORM_XCB_KHR)
-	return VK_KHR_XCB_SURFACE_EXTENSION_NAME;
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
-	return VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
-	return VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME;
-#else
-	assert(0 && "Platform not supported, no surface extension available");
-	return "";
-#endif
 }
 
 void UnixPlatform::create_window(const Window::Properties &properties)

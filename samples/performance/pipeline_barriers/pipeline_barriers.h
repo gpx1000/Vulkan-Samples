@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2020, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -25,14 +25,14 @@
 /**
  * @brief Using pipeline barriers efficiently
  */
-class PipelineBarriers : public vkb::VulkanSample
+class PipelineBarriers : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	PipelineBarriers();
 
 	virtual ~PipelineBarriers() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
   private:
 	enum DependencyType : int
@@ -59,4 +59,4 @@ class PipelineBarriers : public vkb::VulkanSample
 	DependencyType dependency_type{DependencyType::BOTTOM_TO_TOP};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_pipeline_barriers();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_pipeline_barriers();

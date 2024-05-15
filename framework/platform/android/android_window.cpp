@@ -1,4 +1,4 @@
-/* Copyright (c) 2018-2022, Arm Limited and Contributors
+/* Copyright (c) 2018-2023, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -63,12 +63,17 @@ bool AndroidWindow::should_close()
 
 void AndroidWindow::close()
 {
-	ANativeActivity_finish(platform->get_activity());
+	GameActivity_finish(platform->get_activity());
 	finish_called = true;
 }
 
 float AndroidWindow::get_dpi_factor() const
 {
 	return AConfiguration_getDensity(platform->get_android_app()->config) / static_cast<float>(ACONFIGURATION_DENSITY_MEDIUM);
+}
+
+std::vector<const char *> AndroidWindow::get_required_surface_extensions() const
+{
+	return {VK_KHR_ANDROID_SURFACE_EXTENSION_NAME};
 }
 }        // namespace vkb

@@ -1,4 +1,4 @@
-/* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+/* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,14 +21,7 @@
 
 #pragma once
 
-#include <ktx.h>
-
-#include <glslang/Public/ShaderLang.h>
-
-#include "common/vk_common.h"
-#include "core/shader_module.h"
-
-#include "hpp_api_vulkan_sample.h"
+#include <hpp_api_vulkan_sample.h>
 
 class HPPHlslShaders : public HPPApiVulkanSample
 {
@@ -53,10 +46,10 @@ class HPPHlslShaders : public HPPApiVulkanSample
 	};
 
   private:
-	// from platform::HPPApplication
-	bool prepare(vkb::platform::HPPPlatform &platform) override;
+	// from vkb::Application
+	bool prepare(const vkb::ApplicationOptions &options) override;
 
-	// from HPPVulkanSample
+	// from vkb::VulkanSample
 	void request_gpu_features(vkb::core::HPPPhysicalDevice &gpu) override;
 
 	// from HPPApiVulkanSample
@@ -64,16 +57,17 @@ class HPPHlslShaders : public HPPApiVulkanSample
 	void render(float delta_time) override;
 	void view_changed() override;
 
-	void                              draw();
-	void                              generate_quad();
-	void                              load_assets();
-	vk::PipelineShaderStageCreateInfo load_hlsl_shader(const std::string &file, vk::ShaderStageFlagBits stage);
-	void                              prepare_pipelines();
-	void                              prepare_uniform_buffers();
-	void                              setup_descriptor_pool();
-	void                              setup_descriptor_set();
-	void                              setup_descriptor_set_layout();
-	void                              update_uniform_buffers();
+	vk::DescriptorSetLayout create_base_descriptor_set_layout();
+	vk::DescriptorPool      create_descriptor_pool();
+	vk::Pipeline            create_pipeline();
+	vk::PipelineLayout      create_pipeline_layout();
+	vk::DescriptorSetLayout create_sampler_descriptor_set_layout();
+	vk::ShaderModule        create_shader_module(const std::string &file, vk::ShaderStageFlagBits stage);
+	void                    draw();
+	void                    generate_quad();
+	void                    load_assets();
+	void                    update_descriptor_sets();
+	void                    update_uniform_buffers();
 
   private:
 	vk::DescriptorSet                     base_descriptor_set;

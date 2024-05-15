@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023, Holochip Corporation
+ * Copyright (c) 2021-2024, Holochip Corporation
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -31,7 +31,7 @@ DynamicRendering::DynamicRendering() :
 
 DynamicRendering::~DynamicRendering()
 {
-	if (device)
+	if (has_device())
 	{
 		vkDestroySampler(get_device().get_handle(), textures.envmap.sampler, VK_NULL_HANDLE);
 		textures = {};
@@ -47,9 +47,9 @@ DynamicRendering::~DynamicRendering()
 	}
 }
 
-bool DynamicRendering::prepare(vkb::Platform &platform)
+bool DynamicRendering::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!ApiVulkanSample::prepare(platform))
+	if (!ApiVulkanSample::prepare(options))
 	{
 		return false;
 	}
@@ -207,7 +207,7 @@ void DynamicRendering::create_pipeline()
 	color_blend_state.attachmentCount = 1;
 	color_blend_state.pAttachments    = &color_attachment_state;
 
-	// Note: Using Reversed depth-buffer for increased precision, so Greater depth values are kept
+	// Note: Using reversed depth-buffer for increased precision, so Greater depth values are kept
 	VkPipelineDepthStencilStateCreateInfo depth_stencil_state =
 	    vkb::initializers::pipeline_depth_stencil_state_create_info(
 	        VK_FALSE,
@@ -254,7 +254,7 @@ void DynamicRendering::create_pipeline()
 	shader_stages[1] = load_shader("dynamic_rendering/gbuffer.frag", VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	// Create graphics pipeline for dynamic rendering
-	VkFormat color_rendering_format = render_context->get_format();
+	VkFormat color_rendering_format = get_render_context().get_format();
 
 	// Provide information for dynamic rendering
 	VkPipelineRenderingCreateInfoKHR pipeline_create{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR};
@@ -262,7 +262,10 @@ void DynamicRendering::create_pipeline()
 	pipeline_create.colorAttachmentCount    = 1;
 	pipeline_create.pColorAttachmentFormats = &color_rendering_format;
 	pipeline_create.depthAttachmentFormat   = depth_format;
-	pipeline_create.stencilAttachmentFormat = depth_format;
+	if (!vkb::is_depth_only_format(depth_format))
+	{
+		pipeline_create.stencilAttachmentFormat = depth_format;
+	}
 
 	// Use the pNext to point to the rendering create struct
 	VkGraphicsPipelineCreateInfo graphics_create{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
@@ -352,8 +355,7 @@ void DynamicRendering::build_command_buffers()
 			vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, model_pipeline);
 			draw_model(object, draw_cmd_buffer);
 
-			// UI
-			draw_ui(draw_cmd_buffer);
+			// Note: This sample does not render a UI, as the framework's UI overlay doesn't handle dynamic rendering
 		};
 
 		VkImageSubresourceRange range{};
@@ -368,23 +370,17 @@ void DynamicRendering::build_command_buffers()
 
 		if (enable_dynamic)
 		{
-			vkb::insert_image_memory_barrier(draw_cmd_buffer,
-			                                 swapchain_buffers[i].image,
-			                                 0,
-			                                 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-			                                 VK_IMAGE_LAYOUT_UNDEFINED,
-			                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			                                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, range);
+			vkb::image_layout_transition(draw_cmd_buffer,
+			                             swapchain_buffers[i].image,
+			                             VK_IMAGE_LAYOUT_UNDEFINED,
+			                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			                             range);
 
-			vkb::insert_image_memory_barrier(draw_cmd_buffer,
-			                                 depth_stencil.image,
-			                                 0,
-			                                 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-			                                 VK_IMAGE_LAYOUT_UNDEFINED,
-			                                 VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-			                                 VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-			                                 VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, depth_range);
+			vkb::image_layout_transition(draw_cmd_buffer,
+			                             depth_stencil.image,
+			                             VK_IMAGE_LAYOUT_UNDEFINED,
+			                             VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+			                             depth_range);
 
 			VkRenderingAttachmentInfoKHR color_attachment_info = vkb::initializers::rendering_attachment_info();
 			color_attachment_info.imageView                    = swapchain_buffers[i].view;        // color_attachment.image_view;
@@ -402,25 +398,24 @@ void DynamicRendering::build_command_buffers()
 			depth_attachment_info.storeOp                      = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			depth_attachment_info.clearValue                   = clear_values[1];
 
-			auto render_area               = VkRect2D{VkOffset2D{}, VkExtent2D{width, height}};
-			auto render_info               = vkb::initializers::rendering_info(render_area, 1, &color_attachment_info);
-			render_info.layerCount         = 1;
-			render_info.pDepthAttachment   = &depth_attachment_info;
-			render_info.pStencilAttachment = &depth_attachment_info;
+			auto render_area             = VkRect2D{VkOffset2D{}, VkExtent2D{width, height}};
+			auto render_info             = vkb::initializers::rendering_info(render_area, 1, &color_attachment_info);
+			render_info.layerCount       = 1;
+			render_info.pDepthAttachment = &depth_attachment_info;
+			if (!vkb::is_depth_only_format(depth_format))
+			{
+				render_info.pStencilAttachment = &depth_attachment_info;
+			}
 
 			vkCmdBeginRenderingKHR(draw_cmd_buffer, &render_info);
 			draw_scene();
 			vkCmdEndRenderingKHR(draw_cmd_buffer);
 
-			vkb::insert_image_memory_barrier(draw_cmd_buffer,
-			                                 swapchain_buffers[i].image,
-			                                 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-			                                 0,
-			                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			                                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			                                 VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-			                                 range);
+			vkb::image_layout_transition(draw_cmd_buffer,
+			                             swapchain_buffers[i].image,
+			                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			                             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			                             range);
 		}
 		else
 		{
@@ -464,7 +459,7 @@ void DynamicRendering::on_update_ui_overlay(vkb::Drawer &drawer)
 {
 }
 
-std::unique_ptr<vkb::VulkanSample> create_dynamic_rendering()
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_dynamic_rendering()
 {
 	return std::make_unique<DynamicRendering>();
 }

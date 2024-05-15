@@ -1,4 +1,4 @@
-/* Copyright (c) 2022-2023, Sascha Willems
+/* Copyright (c) 2022-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,7 +21,7 @@
  * Note: Requires a device that supports the VK_EXT_graphics_pipeline_library
  *
  * Creates a pipeline library for shared pipeline parts like vertex input and fragment output interfaces. These pre-built pipeline
- * "building blocks" are then used for runtime pipeline creation, which wlll be faster than always creating a full pipeline
+ * "building blocks" are then used for runtime pipeline creation, which will be faster than always creating a full pipeline
  */
 
 #include "graphics_pipeline_library.h"
@@ -53,7 +53,7 @@ GraphicsPipelineLibrary::GraphicsPipelineLibrary()
 {
 	title = "Graphics pipeline library";
 
-	// Graphics pipeline library related etensions required by this sample
+	// Graphics pipeline library related extensions required by this sample
 	add_instance_extension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 	add_device_extension(VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME);
 	add_device_extension(VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
@@ -68,7 +68,7 @@ void GraphicsPipelineLibrary::request_gpu_features(vkb::PhysicalDevice &gpu)
 
 GraphicsPipelineLibrary::~GraphicsPipelineLibrary()
 {
-	if (device)
+	if (has_device())
 	{
 		for (auto pipeline : pipelines)
 		{
@@ -229,7 +229,7 @@ void GraphicsPipelineLibrary::compile_shader(const std::string filename, VkShade
 	}
 }
 
-// This function pre-builts shared pipeline parts ("pipeline library")
+// This function pre-built shared pipeline parts ("pipeline library")
 // E.g. vertex input and fragment out interface, which are the same for all pipelines created in this sample
 void GraphicsPipelineLibrary::prepare_pipeline_library()
 {
@@ -265,7 +265,7 @@ void GraphicsPipelineLibrary::prepare_pipeline_library()
 		VK_CHECK(vkCreateGraphicsPipelines(get_device().get_handle(), pipeline_cache, 1, &pipeline_library_create_info, nullptr, &pipeline_library.vertex_input_interface));
 	}
 
-	// Creata a pipeline library for the vertex shader stage
+	// Create a pipeline library for the vertex shader stage
 	{
 		VkGraphicsPipelineLibraryCreateInfoEXT library_info{};
 		library_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT;
@@ -411,9 +411,10 @@ void GraphicsPipelineLibrary::prepare_new_pipeline()
 	linking_info.pLibraries   = libraries.data();
 
 	VkGraphicsPipelineCreateInfo executable_pipeline_create_info{};
-	executable_pipeline_create_info.sType  = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	executable_pipeline_create_info.pNext  = &linking_info;
-	executable_pipeline_create_info.layout = pipeline_layout;
+	executable_pipeline_create_info.sType      = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	executable_pipeline_create_info.pNext      = &linking_info;
+	executable_pipeline_create_info.layout     = pipeline_layout;
+	executable_pipeline_create_info.renderPass = render_pass;
 	if (link_time_optimization)
 	{
 		// If link time optimization is activated in the UI, we set the VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT flag which will let the implementation do additional optimizations at link time
@@ -461,9 +462,9 @@ void GraphicsPipelineLibrary::draw()
 	ApiVulkanSample::submit_frame();
 }
 
-bool GraphicsPipelineLibrary::prepare(vkb::Platform &platform)
+bool GraphicsPipelineLibrary::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!ApiVulkanSample::prepare(platform))
+	if (!ApiVulkanSample::prepare(options))
 	{
 		return false;
 	}
@@ -514,7 +515,7 @@ void GraphicsPipelineLibrary::render(float delta_time)
 	if (new_pipeline_created)
 	{
 		new_pipeline_created = false;
-		build_command_buffers();
+		rebuild_command_buffers();
 	}
 	draw();
 
@@ -531,7 +532,7 @@ void GraphicsPipelineLibrary::on_update_ui_overlay(vkb::Drawer &drawer)
 		(drawer.checkbox("Link time optimization", &link_time_optimization));
 		if (drawer.button("Add pipeline"))
 		{
-			// Spwan a thread to create a new pipeline in the background
+			// Spawn a thread to create a new pipeline in the background
 			std::thread pipeline_generation_thread(&GraphicsPipelineLibrary::pipeline_creation_threadfn, this);
 			pipeline_generation_thread.detach();
 		}

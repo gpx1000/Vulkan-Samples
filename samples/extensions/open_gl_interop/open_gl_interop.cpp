@@ -1,5 +1,5 @@
-/* Copyright (c) 2020-2023, Bradley Austin Davis
- * Copyright (c) 2020-2023, Arm Limited
+/* Copyright (c) 2020-2024, Bradley Austin Davis
+ * Copyright (c) 2020-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,26 +19,22 @@
 #include "open_gl_interop.h"
 
 #include "common/vk_common.h"
+#include "filesystem/legacy.h"
 #include "gltf_loader.h"
 #include "gui.h"
-#include "platform/filesystem.h"
-#include "platform/platform.h"
-#include "rendering/subpasses/forward_subpass.h"
 
-#if defined(VK_USE_PLATFORM_ANDROID_KHR)
-#	include "platform/android/android_platform.h"
-#endif
+#include "rendering/subpasses/forward_subpass.h"
 
 #include "offscreen_context.h"
 
-constexpr const char *OPENG_VERTEX_SHADER =
+constexpr const char *OPENGL_VERTEX_SHADER =
     R"SHADER(
 const vec4 VERTICES[] = vec4[](
-    vec4(-1.0, -1.0, 0.0, 1.0), 
-    vec4( 1.0, -1.0, 0.0, 1.0),    
+    vec4(-1.0, -1.0, 0.0, 1.0),
+    vec4( 1.0, -1.0, 0.0, 1.0),
     vec4(-1.0,  1.0, 0.0, 1.0),
     vec4( 1.0,  1.0, 0.0, 1.0)
-);   
+);
 void main() { gl_Position = VERTICES[gl_VertexID]; }
 )SHADER";
 
@@ -46,14 +42,14 @@ void main() { gl_Position = VERTICES[gl_VertexID]; }
 // https://www.shadertoy.com/view/Xd23Dh
 constexpr const char *OPENGL_FRAGMENT_SHADER =
     R"SHADER(
-const vec4 iMouse = vec4(0.0); 
+const vec4 iMouse = vec4(0.0);
 layout(location = 0) out vec4 outColor;
 layout(location = 0) uniform vec3 iResolution;
 layout(location = 1) uniform float iTime;
 vec3 hash3( vec2 p )
 {
-    vec3 q = vec3( dot(p,vec2(127.1,311.7)), 
-                   dot(p,vec2(269.5,183.3)), 
+    vec3 q = vec3( dot(p,vec2(127.1,311.7)),
+                   dot(p,vec2(269.5,183.3)),
                    dot(p,vec2(419.2,371.9)) );
     return fract(sin(q)*43758.5453);
 }
@@ -61,9 +57,9 @@ float iqnoise( in vec2 x, float u, float v )
 {
     vec2 p = floor(x);
     vec2 f = fract(x);
-        
+
     float k = 1.0+63.0*pow(1.0-v,4.0);
-    
+
     float va = 0.0;
     float wt = 0.0;
     for( int j=-2; j<=2; j++ )
@@ -77,22 +73,22 @@ float iqnoise( in vec2 x, float u, float v )
         va += o.z*ww;
         wt += ww;
     }
-    
+
     return va/wt;
 }
 void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
     vec2 uv = fragCoord.xy / iResolution.xx;
     vec2 p = 0.5 - 0.5*sin( iTime*vec2(1.01,1.71) );
-    
+
     if( iMouse.w>0.001 ) p = vec2(0.0,1.0) + vec2(1.0,-1.0)*iMouse.xy/iResolution.xy;
-    
+
     p = p*p*(3.0-2.0*p);
     p = p*p*(3.0-2.0*p);
     p = p*p*(3.0-2.0*p);
-    
+
     float f = iqnoise( 24.0*uv, p.x, p.y );
-    
+
     fragColor = vec4( f, f, f, 1.0 );
 }
 void main() { mainImage(outColor, gl_FragCoord.xy); }
@@ -134,8 +130,8 @@ OpenGLInterop::OpenGLInterop()
 
 void OpenGLInterop::prepare_shared_resources()
 {
-	auto deviceHandle         = device->get_handle();
-	auto physicalDeviceHandle = device->get_gpu().get_handle();
+	auto deviceHandle         = get_device().get_handle();
+	auto physicalDeviceHandle = get_device().get_gpu().get_handle();
 
 	{
 		VkExternalSemaphoreHandleTypeFlagBits flags[] = {
@@ -200,7 +196,11 @@ void OpenGLInterop::prepare_shared_resources()
 
 	{
 		VkExternalMemoryImageCreateInfo external_memory_image_create_info{VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
+#if WIN32
+		external_memory_image_create_info.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+#else
 		external_memory_image_create_info.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
+#endif
 		VkImageCreateInfo imageCreateInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
 		imageCreateInfo.pNext         = &external_memory_image_create_info;
 		imageCreateInfo.imageType     = VK_IMAGE_TYPE_2D;
@@ -215,7 +215,7 @@ void OpenGLInterop::prepare_shared_resources()
 		VK_CHECK(vkCreateImage(deviceHandle, &imageCreateInfo, nullptr, &sharedTexture.image));
 
 		VkMemoryRequirements memReqs{};
-		vkGetImageMemoryRequirements(device->get_handle(), sharedTexture.image, &memReqs);
+		vkGetImageMemoryRequirements(get_device().get_handle(), sharedTexture.image, &memReqs);
 
 		VkExportMemoryAllocateInfo exportAllocInfo{
 		    VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO, nullptr,
@@ -223,8 +223,8 @@ void OpenGLInterop::prepare_shared_resources()
 		VkMemoryAllocateInfo memAllocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &exportAllocInfo};
 
 		memAllocInfo.allocationSize = sharedTexture.allocationSize = memReqs.size;
-		memAllocInfo.memoryTypeIndex                               = device->get_memory_type(memReqs.memoryTypeBits,
-		                                                                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		memAllocInfo.memoryTypeIndex                               = get_device().get_memory_type(memReqs.memoryTypeBits,
+		                                                                                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 		VK_CHECK(vkAllocateMemory(deviceHandle, &memAllocInfo, nullptr, &sharedTexture.memory));
 		VK_CHECK(vkBindImageMemory(deviceHandle, sharedTexture.image, sharedTexture.memory, 0));
 
@@ -240,11 +240,16 @@ void OpenGLInterop::prepare_shared_resources()
 		VK_CHECK(vkGetMemoryFdKHR(deviceHandle, &memoryFdInfo, &shareHandles.memory));
 #endif
 
+		// Calculate valid filter and mipmap modes
+		VkFilter            filter      = VK_FILTER_LINEAR;
+		VkSamplerMipmapMode mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		vkb::make_filters_valid(get_device().get_gpu().get_handle(), imageCreateInfo.format, &filter, &mipmap_mode);
+
 		// Create sampler
 		VkSamplerCreateInfo samplerCreateInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-		samplerCreateInfo.magFilter  = VK_FILTER_LINEAR;
-		samplerCreateInfo.minFilter  = VK_FILTER_LINEAR;
-		samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		samplerCreateInfo.magFilter  = filter;
+		samplerCreateInfo.minFilter  = filter;
+		samplerCreateInfo.mipmapMode = mipmap_mode;
 		samplerCreateInfo.maxLod     = static_cast<float>(1);
 		// samplerCreateInfo.maxAnisotropy = context.deviceFeatures.samplerAnisotropy ? context.deviceProperties.limits.maxSamplerAnisotropy : 1.0f;
 		// samplerCreateInfo.anisotropyEnable = context.deviceFeatures.samplerAnisotropy;
@@ -260,28 +265,9 @@ void OpenGLInterop::prepare_shared_resources()
 		                                                          0, 1};
 		vkCreateImageView(deviceHandle, &viewCreateInfo, nullptr, &sharedTexture.view);
 
-		with_command_buffer([&](VkCommandBuffer image_command_buffer) {
-			VkImageMemoryBarrier image_memory_barrier  = vkb::initializers::image_memory_barrier();
-			image_memory_barrier.image                 = sharedTexture.image;
-			image_memory_barrier.srcAccessMask         = 0;
-			image_memory_barrier.dstAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			image_memory_barrier.oldLayout             = VK_IMAGE_LAYOUT_UNDEFINED;
-			image_memory_barrier.newLayout             = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			VkImageSubresourceRange &subresource_range = image_memory_barrier.subresourceRange;
-			subresource_range.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
-			subresource_range.levelCount               = 1;
-			subresource_range.layerCount               = 1;
-
-			vkCmdPipelineBarrier(
-			    image_command_buffer,
-			    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-			    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			    0,
-			    0, nullptr,
-			    0, nullptr,
-			    1, &image_memory_barrier);
-		},
-		                    sharedSemaphores.gl_ready);
+		with_command_buffer(
+		    [&](VkCommandBuffer image_command_buffer) { vkb::image_layout_transition(image_command_buffer, sharedTexture.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL); },
+		    sharedSemaphores.gl_ready);
 	}
 }
 
@@ -437,7 +423,7 @@ void OpenGLInterop::prepare_pipelines()
 	        1,
 	        &blend_attachment_state);
 
-	// Note: Using Reversed depth-buffer for increased precision, so Greater depth values are kept
+	// Note: Using reversed depth-buffer for increased precision, so Greater depth values are kept
 	VkPipelineDepthStencilStateCreateInfo depth_stencil_state =
 	    vkb::initializers::pipeline_depth_stencil_state_create_info(
 	        VK_TRUE,
@@ -539,9 +525,9 @@ void OpenGLInterop::update_uniform_buffers()
 	uniform_buffer_vs->convert_and_update(ubo_vs);
 }
 
-bool OpenGLInterop::prepare(vkb::Platform &platform)
+bool OpenGLInterop::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!ApiVulkanSample::prepare(platform))
+	if (!ApiVulkanSample::prepare(options))
 	{
 		return false;
 	}
@@ -552,7 +538,7 @@ bool OpenGLInterop::prepare(vkb::Platform &platform)
 
 	prepare_shared_resources();
 
-	gl_data->program = gl_context->build_program(OPENG_VERTEX_SHADER, OPENGL_FRAGMENT_SHADER);
+	gl_data->program = gl_context->build_program(OPENGL_VERTEX_SHADER, OPENGL_FRAGMENT_SHADER);
 
 	timer.start();
 
@@ -649,7 +635,7 @@ void OpenGLInterop::render(float)
 	std::array<VkSemaphore, 2>          waitSemaphores{{semaphores.acquired_image_ready, sharedSemaphores.gl_complete}};
 
 	std::array<VkSemaphore, 2> signalSemaphores{{semaphores.render_complete, sharedSemaphores.gl_ready}};
-	// Command buffer to be sumitted to the queue
+	// Command buffer to be submitted to the queue
 	submit_info.waitSemaphoreCount   = vkb::to_u32(waitSemaphores.size());
 	submit_info.pWaitSemaphores      = waitSemaphores.data();
 	submit_info.pWaitDstStageMask    = waitStages.data();
@@ -700,24 +686,7 @@ void OpenGLInterop::build_command_buffers()
 
 		VK_CHECK(vkBeginCommandBuffer(draw_cmd_buffers[i], &command_buffer_begin_info));
 
-		{
-			VkImageMemoryBarrier image_memory_barrier = vkb::initializers::image_memory_barrier();
-			image_memory_barrier.image                = sharedTexture.image;
-			image_memory_barrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			image_memory_barrier.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT;
-			image_memory_barrier.oldLayout            = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			image_memory_barrier.newLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-			VkImageSubresourceRange &subresource_range = image_memory_barrier.subresourceRange;
-			subresource_range.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
-			subresource_range.levelCount               = 1;
-			subresource_range.layerCount               = 1;
-			vkCmdPipelineBarrier(
-			    draw_cmd_buffers[i],
-			    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-			    0, nullptr, 0, nullptr, 1, &image_memory_barrier);
-		}
+		vkb::image_layout_transition(draw_cmd_buffers[i], sharedTexture.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		vkCmdBeginRenderPass(draw_cmd_buffers[i], &render_pass_begin_info,
 		                     VK_SUBPASS_CONTENTS_INLINE);
@@ -744,31 +713,8 @@ void OpenGLInterop::build_command_buffers()
 
 		vkCmdEndRenderPass(draw_cmd_buffers[i]);
 
-		{
-			VkImageMemoryBarrier image_memory_barrier = vkb::initializers::image_memory_barrier();
-			image_memory_barrier.image                = sharedTexture.image;
-			image_memory_barrier.srcAccessMask        = VK_ACCESS_SHADER_READ_BIT;
-			image_memory_barrier.dstAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			image_memory_barrier.oldLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			image_memory_barrier.newLayout            = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		vkb::image_layout_transition(draw_cmd_buffers[i], sharedTexture.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-			VkImageSubresourceRange &subresource_range = image_memory_barrier.subresourceRange;
-			subresource_range.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
-			subresource_range.levelCount               = 1;
-			subresource_range.layerCount               = 1;
-
-			// Insert a memory dependency at the proper pipeline stages that will execute the image layout transition
-			// Source pipeline stage is host write/read exection (VK_PIPELINE_STAGE_HOST_BIT)
-			// Destination pipeline stage is copy command exection (VK_PIPELINE_STAGE_TRANSFER_BIT)
-			vkCmdPipelineBarrier(
-			    draw_cmd_buffers[i],
-			    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-			    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			    0,
-			    0, nullptr,
-			    0, nullptr,
-			    1, &image_memory_barrier);
-		}
 		VK_CHECK(vkEndCommandBuffer(draw_cmd_buffers[i]));
 	}
 }
@@ -799,10 +745,10 @@ OpenGLInterop::~OpenGLInterop()
 	index_buffer.reset();
 	uniform_buffer_vs.reset();
 
-	if (device)
+	if (has_device())
 	{
-		device->wait_idle();
-		auto deviceHandle = device->get_handle();
+		get_device().wait_idle();
+		auto deviceHandle = get_device().get_handle();
 		vkDestroySemaphore(deviceHandle, sharedSemaphores.gl_ready, nullptr);
 		vkDestroySemaphore(deviceHandle, sharedSemaphores.gl_complete, nullptr);
 		vkDestroyImage(deviceHandle, sharedTexture.image, nullptr);
@@ -815,7 +761,7 @@ OpenGLInterop::~OpenGLInterop()
 	}
 }
 
-std::unique_ptr<vkb::VulkanSample> create_open_gl_interop()
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_open_gl_interop()
 {
 	return std::make_unique<OpenGLInterop>();
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2021, Arm Limited and Contributors
+/* Copyright (c) 2019-2023, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,15 +17,59 @@
 
 #pragma once
 
-#include <android_native_app_glue.h>
+#include <game-activity/native_app_glue/android_native_app_glue.h>
 
 #include "platform/platform.h"
 
 namespace vkb
 {
+class AndroidPlatform : public Platform
+{
+  public:
+	AndroidPlatform(const PlatformContext &context);
+
+	virtual ~AndroidPlatform() = default;
+
+	virtual ExitCode initialize(const std::vector<Plugin *> &plugins) override;
+
+	virtual void terminate(ExitCode code) override;
+
+	/**
+	 * @brief Sends a notification in the task bar
+	 * @param message The message to display
+	 */
+	void send_notification(const std::string &message);
+
+	/**
+	 * @brief Sends an error notification in the task bar
+	 * @param message The message to display
+	 */
+	void send_error_notification(const std::string &message);
+
+	android_app *get_android_app();
+
+	GameActivity *get_activity();
+
+	void set_surface_ready();
+
+	void process_android_input_events(void);
+
+  private:
+	virtual void create_window(const Window::Properties &properties) override;
+
+  private:
+	android_app *app{nullptr};
+
+	std::string log_output;
+
+	virtual std::vector<spdlog::sink_ptr> get_platform_sinks() override;
+
+	bool surface_ready{false};
+};
+
 /**
  * @brief Process android lifecycle events
- * 
+ *
  * @param app Android app context
  * @return true Events processed
  * @return false Program should close
@@ -50,53 +94,11 @@ inline bool process_android_events(android_app *app)
 			return false;
 		}
 	}
-
+	if (app->userData)
+	{
+		auto platform = reinterpret_cast<AndroidPlatform *>(app->userData);
+		platform->process_android_input_events();
+	}
 	return true;
 }
-
-class AndroidPlatform : public Platform
-{
-  public:
-	AndroidPlatform(android_app *app);
-
-	virtual ~AndroidPlatform() = default;
-
-	virtual ExitCode initialize(const std::vector<Plugin *> &plugins) override;
-
-	virtual void terminate(ExitCode code) override;
-
-	virtual const char *get_surface_extension() override;
-
-	/**
-	 * @brief Sends a notification in the task bar
-	 * @param message The message to display
-	 */
-	void send_notification(const std::string &message);
-
-	/**
-	 * @brief Sends an error notification in the task bar
-	 * @param message The message to display
-	 */
-	void send_error_notification(const std::string &message);
-
-	android_app *get_android_app();
-
-	ANativeActivity *get_activity();
-
-	virtual std::unique_ptr<RenderContext> create_render_context(Device &device, VkSurfaceKHR surface, const std::vector<VkSurfaceFormatKHR> &surface_format_priority) const override;
-
-	void set_surface_ready();
-
-  private:
-	virtual void create_window(const Window::Properties &properties) override;
-
-  private:
-	android_app *app{nullptr};
-
-	std::string log_output;
-
-	virtual std::vector<spdlog::sink_ptr> get_platform_sinks() override;
-
-	bool surface_ready{false};
-};
 }        // namespace vkb

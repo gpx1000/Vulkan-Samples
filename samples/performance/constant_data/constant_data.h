@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2022, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: MIT
  *
@@ -49,7 +49,7 @@ struct alignas(16) MVPUniform
  * @brief Constant Data sample
  *
  * This sample is designed to show the different ways in which Vulkan can push constant data to the
- * shaders. 
+ * shaders.
  *
  * The current ways that are supported are:
  *     - Push Constants
@@ -60,18 +60,18 @@ struct alignas(16) MVPUniform
  *
  * The sample also shows the performance implications that these different methods would have on your
  * application or game. These performance deltas may differ between platforms and vendors.
- * 
+ *
  * The data structure used will be pushed in its entirety if 256 bytes of push constants
  * are supported by the physical device, otherwise it will be trimmed to 128 bytes
  * (i.e. only "model" and "camera_view_proj" will be pushed)
  *
  * The shaders will be compiled with a definition to handle this difference.
  */
-class ConstantData : public vkb::VulkanSample
+class ConstantData : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	/**
-	 * @brief The sample supported methods of using constant data in shaders 
+	 * @brief The sample supported methods of using constant data in shaders
 	 */
 	enum Method
 	{
@@ -97,7 +97,7 @@ class ConstantData : public vkb::VulkanSample
 
 	virtual ~ConstantData() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	/**
 	 * @brief The base subpass to help prepare the shader variants and store the push constant limit
@@ -223,7 +223,7 @@ class ConstantData : public vkb::VulkanSample
 		vkb::ShaderSource vert_shader(vertex_shader);
 		vkb::ShaderSource frag_shader(fragment_shader);
 
-		auto subpass = std::make_unique<T>(get_render_context(), std::move(vert_shader), std::move(frag_shader), *scene, *camera);
+		auto subpass = std::make_unique<T>(get_render_context(), std::move(vert_shader), std::move(frag_shader), get_scene(), *camera);
 
 		// We want to check if the push constants limit can support the full 256 bytes
 		auto push_constant_limit = get_device().get_gpu().get_properties().limits.maxPushConstantsSize;
@@ -245,7 +245,7 @@ class ConstantData : public vkb::VulkanSample
 	virtual void request_gpu_features(vkb::PhysicalDevice &gpu) override;
 
 	/**
-	 * @brief Helper function to determine the constant data method that is selected and supported by the sample 
+	 * @brief Helper function to determine the constant data method that is selected and supported by the sample
 	 * @returns The method that is selected, otherwise push constants
 	 */
 	inline Method get_active_method();
@@ -274,4 +274,4 @@ class ConstantData : public vkb::VulkanSample
 	int last_gui_method_value{static_cast<int>(Method::PushConstants)};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_constant_data();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_constant_data();

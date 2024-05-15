@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2022, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -22,14 +22,14 @@
 #include "scene_graph/components/perspective_camera.h"
 #include "vulkan_sample.h"
 
-class WaitIdle : public vkb::VulkanSample
+class WaitIdle : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	WaitIdle();
 
 	virtual ~WaitIdle() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	/**
 	 * @brief This RenderContext is responsible containing the scene's RenderFrames
@@ -46,11 +46,9 @@ class WaitIdle : public vkb::VulkanSample
 		int &wait_idle_enabled;
 	};
 
-	virtual void prepare_render_context() override;
+	virtual void create_render_context() override;
 
   private:
-	vkb::Platform *platform;
-
 	vkb::sg::PerspectiveCamera *camera{nullptr};
 
 	virtual void draw_gui() override;
@@ -58,4 +56,4 @@ class WaitIdle : public vkb::VulkanSample
 	int wait_idle_enabled{0};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_wait_idle();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_wait_idle();

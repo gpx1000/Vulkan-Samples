@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2023, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,13 +17,12 @@
 
 #include "glsl_compiler.h"
 
-VKBP_DISABLE_WARNINGS()
 #include <SPIRV/GLSL.std.450.h>
 #include <SPIRV/GlslangToSpv.h>
-#include <StandAlone/ResourceLimits.h>
+#include <StandAlone/DirStackFileIncluder.h>
 #include <glslang/Include/ShHandle.h>
 #include <glslang/OSDependent/osinclude.h>
-VKBP_ENABLE_WARNINGS()
+#include <glslang/Public/ResourceLimits.h>
 
 namespace vkb
 {
@@ -68,6 +67,12 @@ inline EShLanguage FindShaderLanguage(VkShaderStageFlagBits stage)
 
 		case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
 			return EShLangCallable;
+
+		case VK_SHADER_STAGE_MESH_BIT_EXT:
+			return EShLangMesh;
+
+		case VK_SHADER_STAGE_TASK_BIT_EXT:
+			return EShLangTask;
 
 		default:
 			return EShLangVertex;
@@ -119,7 +124,10 @@ bool GLSLCompiler::compile_to_spirv(VkShaderStageFlagBits       stage,
 		shader.setEnvTarget(GLSLCompiler::env_target_language, GLSLCompiler::env_target_language_version);
 	}
 
-	if (!shader.parse(&glslang::DefaultTBuiltInResource, 100, false, messages))
+	DirStackFileIncluder includeDir;
+	includeDir.pushExternalLocalDirectory("shaders");
+
+	if (!shader.parse(GetDefaultResources(), 100, false, messages, includeDir))
 	{
 		info_log = std::string(shader.getInfoLog()) + "\n" + std::string(shader.getInfoDebugLog());
 		return false;

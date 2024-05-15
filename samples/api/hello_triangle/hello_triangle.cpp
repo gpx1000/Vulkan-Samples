@@ -1,4 +1,4 @@
-/* Copyright (c) 2018-2023, Arm Limited and Contributors
+/* Copyright (c) 2018-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,11 +17,11 @@
 
 #include "hello_triangle.h"
 
-#include "common/logging.h"
 #include "common/vk_common.h"
+#include "core/util/logging.hpp"
+#include "filesystem/legacy.h"
 #include "glsl_compiler.h"
-#include "platform/filesystem.h"
-#include "platform/platform.h"
+#include "platform/window.h"
 
 #if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
 /// @brief A debug callback called from Vulkan validation layers.
@@ -162,10 +162,10 @@ void HelloTriangle::init_instance(Context                         &context,
 {
 	LOGI("Initializing vulkan instance.");
 
-	if (volkInitialize())
-	{
-		throw std::runtime_error("Failed to initialize volk.");
-	}
+    if (volkInitialize())
+    {
+        throw std::runtime_error("Failed to initialize volk.");
+    }
 
 	uint32_t instance_extension_count;
 	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &instance_extension_count, nullptr));
@@ -435,51 +435,7 @@ void HelloTriangle::init_swapchain(Context &context)
 	VkSurfaceCapabilitiesKHR surface_properties;
 	VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context.gpu, context.surface, &surface_properties));
 
-	uint32_t format_count;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(context.gpu, context.surface, &format_count, nullptr);
-	std::vector<VkSurfaceFormatKHR> formats(format_count);
-	vkGetPhysicalDeviceSurfaceFormatsKHR(context.gpu, context.surface, &format_count, formats.data());
-
-	VkSurfaceFormatKHR format;
-	if (format_count == 1 && formats[0].format == VK_FORMAT_UNDEFINED)
-	{
-		// Always prefer sRGB for display
-		format        = formats[0];
-		format.format = VK_FORMAT_B8G8R8A8_SRGB;
-	}
-	else
-	{
-		if (format_count == 0)
-		{
-			throw std::runtime_error("Surface has no formats.");
-		}
-
-		format.format = VK_FORMAT_UNDEFINED;
-		for (auto &candidate : formats)
-		{
-			switch (candidate.format)
-			{
-				case VK_FORMAT_R8G8B8A8_SRGB:
-				case VK_FORMAT_B8G8R8A8_SRGB:
-				case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
-					format = candidate;
-					break;
-
-				default:
-					break;
-			}
-
-			if (format.format != VK_FORMAT_UNDEFINED)
-			{
-				break;
-			}
-		}
-
-		if (format.format == VK_FORMAT_UNDEFINED)
-		{
-			format = formats[0];
-		}
-	}
+	VkSurfaceFormatKHR format = vkb::select_surface_format(context.gpu, context.surface);
 
 	VkExtent2D swapchain_size;
 	if (surface_properties.currentExtent.width == 0xFFFFFFFF)
@@ -1090,14 +1046,16 @@ HelloTriangle::~HelloTriangle()
 	teardown(context);
 }
 
-bool HelloTriangle::prepare(vkb::Platform &platform)
+bool HelloTriangle::prepare(const vkb::ApplicationOptions &options)
 {
+	assert(options.window != nullptr);
+
 	init_instance(context, {VK_KHR_SURFACE_EXTENSION_NAME}, {});
 
 	vk_instance = std::make_unique<vkb::Instance>(context.instance);
 
-	context.surface                     = platform.get_window().create_surface(*vk_instance);
-	auto &extent                        = platform.get_window().get_extent();
+	context.surface                     = options.window->create_surface(*vk_instance);
+	auto &extent                        = options.window->get_extent();
 	context.swapchain_dimensions.width  = extent.width;
 	context.swapchain_dimensions.height = extent.height;
 

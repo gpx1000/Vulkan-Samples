@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2021, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -41,7 +41,7 @@ ImageView::ImageView(Image &img, VkImageViewType view_type, VkFormat format,
 	subresource_range.levelCount     = n_mip_levels == 0 ? image->get_subresource().mipLevel : n_mip_levels;
 	subresource_range.layerCount     = n_array_layers == 0 ? image->get_subresource().arrayLayer : n_array_layers;
 
-	if (is_depth_stencil_format(format))
+	if (is_depth_format(format))
 	{
 		subresource_range.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 	}
@@ -56,7 +56,7 @@ ImageView::ImageView(Image &img, VkImageViewType view_type, VkFormat format,
 	view_info.format           = format;
 	view_info.subresourceRange = subresource_range;
 
-	auto result = vkCreateImageView(device->get_handle(), &view_info, nullptr, &handle);
+	auto result = vkCreateImageView(get_device().get_handle(), &view_info, nullptr, &get_handle());
 
 	if (result != VK_SUCCESS)
 	{
@@ -78,15 +78,13 @@ ImageView::ImageView(ImageView &&other) :
 	auto &views = image->get_views();
 	views.erase(&other);
 	views.emplace(this);
-
-	other.handle = VK_NULL_HANDLE;
 }
 
 ImageView::~ImageView()
 {
-	if (handle != VK_NULL_HANDLE)
+	if (has_device())
 	{
-		vkDestroyImageView(device->get_handle(), handle, nullptr);
+		vkDestroyImageView(get_device().get_handle(), get_handle(), nullptr);
 	}
 }
 

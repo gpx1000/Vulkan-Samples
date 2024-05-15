@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -28,14 +28,14 @@
 /**
  * @brief Appropriate use of surface rotation
  */
-class SurfaceRotation : public vkb::VulkanSample
+class SurfaceRotation : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	SurfaceRotation();
 
 	virtual ~SurfaceRotation() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	virtual void update(float delta_time) override;
 
@@ -51,10 +51,10 @@ class SurfaceRotation : public vkb::VulkanSample
 	bool last_pre_rotate = false;
 
 	/*
-	* @brief Returns the preTransform value to use when recreating
-	*        the swapchain, which depends on whether or not the
-	*        application is implementing pre-rotation
-	*/
+	 * @brief Returns the preTransform value to use when recreating
+	 *        the swapchain, which depends on whether or not the
+	 *        application is implementing pre-rotation
+	 */
 	VkSurfaceTransformFlagBitsKHR select_pre_transform();
 
 	/* @brief 180 degree rotations do not trigger a resize, but
@@ -65,4 +65,4 @@ class SurfaceRotation : public vkb::VulkanSample
 	void handle_no_resize_rotations();
 };
 
-std::unique_ptr<vkb::VulkanSample> create_surface_rotation();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_surface_rotation();

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2020, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -25,14 +25,14 @@
 /**
  * @brief Transitioning images from UNDEFINED vs last known layout
  */
-class LayoutTransitions : public vkb::VulkanSample
+class LayoutTransitions : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	LayoutTransitions();
 
 	virtual ~LayoutTransitions() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
   private:
 	enum LayoutTransitionType : int
@@ -60,4 +60,4 @@ class LayoutTransitions : public vkb::VulkanSample
 	LayoutTransitionType layout_transition_type{LayoutTransitionType::UNDEFINED};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_layout_transitions();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_layout_transitions();

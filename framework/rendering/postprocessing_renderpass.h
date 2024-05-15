@@ -1,4 +1,4 @@
-/* Copyright (c) 2020-2023, Arm Limited and Contributors
+/* Copyright (c) 2020-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -157,6 +157,11 @@ class PostProcessingSubpass : public Subpass
 	PostProcessingSubpass &bind_storage_image(const std::string &name, const core::ImageView &new_image);
 
 	/**
+	 * @brief Removes the sampled image at name for this step.
+	 */
+	void unbind_sampled_image(const std::string &name);
+
+	/**
 	 * @brief Set the constants that are pushed before each fullscreen draw.
 	 */
 	PostProcessingSubpass &set_push_constants(const std::vector<uint8_t> &data);
@@ -310,6 +315,7 @@ class PostProcessingRenderPass : public PostProcessingPass<PostProcessingRenderP
 
 	RenderPipeline                    pipeline{};
 	std::unique_ptr<core::Sampler>    default_sampler{};
+	std::unique_ptr<core::Sampler>    default_sampler_nearest{};
 	RenderTarget                     *draw_render_target{nullptr};
 	std::vector<LoadStoreInfo>        load_stores{};
 	bool                              load_stores_dirty{true};

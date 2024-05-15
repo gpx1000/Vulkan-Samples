@@ -1,4 +1,4 @@
-/* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+/* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -30,34 +30,47 @@ class HPPHDR : public HPPApiVulkanSample
 	~HPPHDR();
 
   private:
-	struct DescriptorSetLayouts
+	struct Bloom
 	{
-		vk::DescriptorSetLayout models;
-		vk::DescriptorSetLayout composition;
-		vk::DescriptorSetLayout bloom_filter;
+		bool                    enabled               = true;
+		vk::DescriptorSetLayout descriptor_set_layout = {};
+		vk::DescriptorSet       descriptor_set;
+		vk::PipelineLayout      pipeline_layout;
+		vk::Pipeline            pipelines[2];
+
+		void destroy(vk::Device device)
+		{
+			device.destroyPipeline(pipelines[0]);
+			device.destroyPipeline(pipelines[1]);
+			device.destroyPipelineLayout(pipeline_layout);
+			device.destroyDescriptorSetLayout(descriptor_set_layout);
+			// no need to free the descriptor_set, as it's implicitly free'd with the descriptor_pool
+		}
 	};
 
-	struct DescriptorSets
+	struct Composition
 	{
-		vk::DescriptorSet object;
-		vk::DescriptorSet skybox;
-		vk::DescriptorSet composition;
-		vk::DescriptorSet bloom_filter;
+		vk::DescriptorSetLayout descriptor_set_layout = {};
+		vk::DescriptorSet       descriptor_set        = {};
+		vk::PipelineLayout      pipeline_layout       = {};
+		vk::Pipeline            pipeline              = {};
+
+		void destroy(vk::Device device)
+		{
+			device.destroyPipeline(pipeline);
+			device.destroyPipelineLayout(pipeline_layout);
+			device.destroyDescriptorSetLayout(descriptor_set_layout);
+			// no need to free the descriptor_set, as it's implicitly free'd with the descriptor_pool
+		}
 	};
 
 	// Framebuffer for offscreen rendering
-	struct FrameBufferAttachment
+	struct FramebufferAttachment
 	{
-		vk::Image        image;
-		vk::DeviceMemory mem;
-		vk::ImageView    view;
-		vk::Format       format;
-
-		FrameBufferAttachment() = default;
-
-		FrameBufferAttachment(vk::Image image_, vk::DeviceMemory mem_, vk::ImageView view_, vk::Format format_) :
-		    image(image_), mem(mem_), view(view_), format(format_)
-		{}
+		vk::Format       format = {};
+		vk::Image        image  = {};
+		vk::DeviceMemory mem    = {};
+		vk::ImageView    view   = {};
 
 		void destroy(vk::Device device)
 		{
@@ -69,49 +82,80 @@ class HPPHDR : public HPPApiVulkanSample
 
 	struct FilterPass
 	{
-		vk::Extent2D          extent;
-		vk::Framebuffer       framebuffer;
-		FrameBufferAttachment color[1];
-		vk::RenderPass        render_pass;
-		vk::Sampler           sampler;
+		vk::Extent2D          extent      = {};
+		vk::Framebuffer       framebuffer = {};
+		FramebufferAttachment color       = {};
+		vk::RenderPass        render_pass = {};
+		vk::Sampler           sampler     = {};
+
+		void destroy(vk::Device device)
+		{
+			device.destroySampler(sampler);
+			device.destroyFramebuffer(framebuffer);
+			device.destroyRenderPass(render_pass);
+			color.destroy(device);
+		}
 	};
 
-	struct Offscreen
+	struct Geometry
 	{
-		vk::Extent2D          extent;
-		vk::Framebuffer       framebuffer;
-		FrameBufferAttachment color[2];
-		FrameBufferAttachment depth;
-		vk::RenderPass        render_pass;
-		vk::Sampler           sampler;
+		vk::DescriptorSet                                                      descriptor_set = {};
+		vk::Pipeline                                                           pipeline       = {};
+		std::vector<std::unique_ptr<vkb::scene_graph::components::HPPSubMesh>> meshes         = {};
+
+		void destroy(vk::Device device, vk::DescriptorPool descriptor_pool)
+		{
+			// no need to free the descriptor_set, as it's implicitly free'd with the descriptor_pool
+			device.destroyPipeline(pipeline);
+		}
 	};
 
 	struct Models
 	{
-		std::unique_ptr<vkb::scene_graph::components::HPPSubMesh>              skybox;
-		std::vector<std::unique_ptr<vkb::scene_graph::components::HPPSubMesh>> objects;
-		std::vector<glm::mat4>                                                 transforms;
-		int32_t                                                                object_index = 0;
+		vk::DescriptorSetLayout descriptor_set_layout = {};
+		vk::PipelineLayout      pipeline_layout       = {};
+		Geometry                objects               = {};
+		Geometry                skybox                = {};
+		std::vector<glm::mat4>  transforms            = {};
+		int32_t                 object_index          = 0;
+
+		void destroy(vk::Device device, vk::DescriptorPool descriptor_pool)
+		{
+			objects.destroy(device, descriptor_pool);
+			skybox.destroy(device, descriptor_pool);
+			device.destroyPipelineLayout(pipeline_layout);
+			device.destroyDescriptorSetLayout(descriptor_set_layout);
+		}
 	};
 
-	struct PipelineLayouts
+	struct Offscreen
 	{
-		vk::PipelineLayout models;
-		vk::PipelineLayout composition;
-		vk::PipelineLayout bloom_filter;
-	};
+		vk::Extent2D          extent      = {};
+		vk::Framebuffer       framebuffer = {};
+		FramebufferAttachment color[2]    = {};
+		FramebufferAttachment depth       = {};
+		vk::RenderPass        render_pass = {};
+		vk::Sampler           sampler     = {};
 
-	struct Pipelines
-	{
-		vk::Pipeline skybox;
-		vk::Pipeline reflect;
-		vk::Pipeline composition;
-		vk::Pipeline bloom[2];
+		void destroy(vk::Device device)
+		{
+			device.destroySampler(sampler);
+			device.destroyFramebuffer(framebuffer);
+			device.destroyRenderPass(render_pass);
+			color[0].destroy(device);
+			color[1].destroy(device);
+			depth.destroy(device);
+		}
 	};
 
 	struct Textures
 	{
 		HPPTexture envmap;
+
+		void destroy(vk::Device device)
+		{
+			device.destroySampler(envmap.sampler);
+		}
 	};
 
 	struct UBOMatrices
@@ -134,41 +178,50 @@ class HPPHDR : public HPPApiVulkanSample
 	};
 
   private:
-	// from platform::HPPApplication
-	virtual bool prepare(vkb::platform::HPPPlatform &platform) override;
+	// from vkb::Application
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 	virtual bool resize(const uint32_t width, const uint32_t height) override;
 
-	// from HPPVulkanSample
+	// from vkb::VulkanSample
 	virtual void request_gpu_features(vkb::core::HPPPhysicalDevice &gpu) override;
 
 	// from HPPApiVulkanSample
 	virtual void build_command_buffers() override;
-	virtual void on_update_ui_overlay(vkb::HPPDrawer &drawer) override;
+	virtual void on_update_ui_overlay(vkb::Drawer &drawer) override;
 	virtual void render(float delta_time) override;
 
-	FrameBufferAttachment create_attachment(vk::Format format, vk::ImageUsageFlagBits usage);
+	vk::DeviceMemory      allocate_memory(vk::Image image);
+	FramebufferAttachment create_attachment(vk::Format format, vk::ImageUsageFlagBits usage);
+	vk::DescriptorPool    create_descriptor_pool();
+	vk::Pipeline          create_bloom_pipeline(uint32_t direction);
+	vk::Pipeline          create_composition_pipeline();
+	vk::RenderPass        create_filter_render_pass();
+	vk::Image             create_image(vk::Format format, vk::ImageUsageFlagBits usage);
+	vk::Pipeline          create_models_pipeline(uint32_t shaderType, vk::CullModeFlagBits cullMode, bool depthTestAndWrite);
+	vk::RenderPass        create_offscreen_render_pass();
+	vk::RenderPass        create_render_pass(std::vector<vk::AttachmentDescription> const &attachment_descriptions, vk::SubpassDescription const &subpass_description);
 	void                  draw();
 	void                  load_assets();
+	void                  prepare_bloom();
+	void                  prepare_camera();
+	void                  prepare_composition();
+	void                  prepare_models();
 	void                  prepare_offscreen_buffer();
-	void                  prepare_pipelines();
 	void                  prepare_uniform_buffers();
-	void                  setup_descriptor_pool();
-	void                  setup_descriptor_set_layout();
-	void                  setup_descriptor_sets();
+	void                  update_composition_descriptor_set();
+	void                  update_bloom_descriptor_set();
+	void                  update_model_descriptor_set(vk::DescriptorSet descriptor_set);
 	void                  update_params();
 	void                  update_uniform_buffers();
 
   private:
-	bool                     bloom = true;
-	DescriptorSetLayouts     descriptor_set_layouts;
-	DescriptorSets           descriptor_sets;
+	Bloom                    bloom;
+	Composition              composition;
 	bool                     display_skybox = true;
 	FilterPass               filter_pass;
 	Models                   models;
 	std::vector<std::string> object_names;
 	Offscreen                offscreen;
-	PipelineLayouts          pipeline_layouts;
-	Pipelines                pipelines;
 	Textures                 textures;
 	UBOMatrices              ubo_matrices;
 	UBOParams                ubo_params;

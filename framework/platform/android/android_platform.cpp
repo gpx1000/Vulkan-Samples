@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2021, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,36 +21,24 @@
 #include <unistd.h>
 #include <unordered_map>
 
+#include <android/context.hpp>
+
 #include "common/error.h"
 
-VKBP_DISABLE_WARNINGS()
+#include <fmt/format.h>
 #include <imgui.h>
 #include <jni.h>
 #include <spdlog/sinks/android_sink.h>
 #include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/spdlog.h>
-VKBP_ENABLE_WARNINGS()
 
 #include "apps.h"
-#include "common/logging.h"
 #include "common/strings.h"
+#include "core/util/logging.hpp"
 #include "platform/android/android_window.h"
 #include "platform/input_events.h"
 
 extern "C"
 {
-	JNIEXPORT void JNICALL
-	    Java_com_khronos_vulkan_1samples_SampleLauncherActivity_initFilePath(JNIEnv *env, jobject thiz, jstring external_dir, jstring temp_dir)
-	{
-		const char *external_dir_cstr = env->GetStringUTFChars(external_dir, 0);
-		vkb::Platform::set_external_storage_directory(std::string(external_dir_cstr) + "/");
-		env->ReleaseStringUTFChars(external_dir, external_dir_cstr);
-
-		const char *temp_dir_cstr = env->GetStringUTFChars(temp_dir, 0);
-		vkb::Platform::set_temp_directory(std::string(temp_dir_cstr) + "/");
-		env->ReleaseStringUTFChars(temp_dir, temp_dir_cstr);
-	}
-
 	JNIEXPORT jobjectArray JNICALL
 	    Java_com_khronos_vulkan_1samples_SampleLauncherActivity_getSamples(JNIEnv *env, jobject thiz)
 	{
@@ -80,25 +68,6 @@ extern "C"
 		}
 
 		return j_sample_list;
-	}
-
-	JNIEXPORT void JNICALL
-	    Java_com_khronos_vulkan_1samples_SampleLauncherActivity_sendArgumentsToPlatform(JNIEnv *env, jobject thiz, jobjectArray arg_strings)
-	{
-		std::vector<std::string> args;
-
-		for (int i = 0; i < env->GetArrayLength(arg_strings); i++)
-		{
-			jstring arg_string = (jstring)(env->GetObjectArrayElement(arg_strings, i));
-
-			const char *arg = env->GetStringUTFChars(arg_string, 0);
-
-			args.push_back(std::string(arg));
-
-			env->ReleaseStringUTFChars(arg_string, arg);
-		}
-
-		vkb::Platform::set_arguments(args);
 	}
 }
 
@@ -295,7 +264,7 @@ inline TouchAction translate_touch_action(int action)
 	return TouchAction::Unknown;
 }
 
-void on_content_rect_changed(ANativeActivity *activity, const ARect *rect)
+void on_content_rect_changed(GameActivity *activity, const ARect *rect)
 {
 	LOGI("ContentRectChanged: {:p}\n", static_cast<void *>(activity));
 	struct android_app *app = reinterpret_cast<struct android_app *>(activity->instance);
@@ -316,102 +285,69 @@ void on_app_cmd(android_app *app, int32_t cmd)
 
 	switch (cmd)
 	{
-		case APP_CMD_INIT_WINDOW: {
+		case APP_CMD_INIT_WINDOW:
+		{
 			platform->resize(ANativeWindow_getWidth(app->window),
 			                 ANativeWindow_getHeight(app->window));
 			platform->set_surface_ready();
 			break;
 		}
-		case APP_CMD_CONTENT_RECT_CHANGED: {
+		case APP_CMD_CONTENT_RECT_CHANGED:
+		{
 			// Get the new size
 			auto width  = app->contentRect.right - app->contentRect.left;
 			auto height = app->contentRect.bottom - app->contentRect.top;
 			platform->resize(width, height);
 			break;
 		}
-		case APP_CMD_GAINED_FOCUS: {
+		case APP_CMD_GAINED_FOCUS:
+		{
 			platform->set_focus(true);
 			break;
 		}
-		case APP_CMD_LOST_FOCUS: {
+		case APP_CMD_LOST_FOCUS:
+		{
 			platform->set_focus(false);
 			break;
 		}
 	}
 }
 
-int32_t on_input_event(android_app *app, AInputEvent *input_event)
+bool key_event_filter(const GameActivityKeyEvent *event)
 {
-	auto platform = reinterpret_cast<AndroidPlatform *>(app->userData);
-	assert(platform && "Platform is not valid");
-
-	std::int32_t event_source = AInputEvent_getSource(input_event);
-
-	if (event_source == AINPUT_SOURCE_KEYBOARD)
+	if (event->source == AINPUT_SOURCE_KEYBOARD)
 	{
-		int32_t key_code = AKeyEvent_getKeyCode(input_event);
-		int32_t action   = AKeyEvent_getAction(input_event);
-
-		platform->input_event(KeyInputEvent{
-		    translate_key_code(key_code),
-		    translate_key_action(action)});
+		return true;
 	}
-	else if (event_source == AINPUT_SOURCE_MOUSE)
+	return false;
+}
+
+bool motion_event_filter(const GameActivityMotionEvent *event)
+{
+	if ((event->source == AINPUT_SOURCE_MOUSE) ||
+	    (event->source == AINPUT_SOURCE_TOUCHSCREEN))
 	{
-		std::int32_t action = AMotionEvent_getAction(input_event);
-
-		float x = AMotionEvent_getX(input_event, 0);
-		float y = AMotionEvent_getY(input_event, 0);
-
-		platform->input_event(MouseButtonInputEvent{
-		    translate_mouse_button(0),
-		    translate_mouse_action(action),
-		    x, y});
+		return true;
 	}
-	else if (event_source == AINPUT_SOURCE_TOUCHSCREEN)
-	{
-		size_t       pointer_count = AMotionEvent_getPointerCount(input_event);
-		std::int32_t action        = AMotionEvent_getAction(input_event);
-		std::int32_t pointer_id    = AMotionEvent_getPointerId(input_event, 0);
-
-		float x = AMotionEvent_getX(input_event, 0);
-		float y = AMotionEvent_getY(input_event, 0);
-
-		platform->input_event(TouchInputEvent{
-		    pointer_id,
-		    pointer_count,
-		    translate_touch_action(action),
-		    x, y});
-	}
-	else
-	{
-		return 0;
-	}
-
-	return 1;
+	return false;
 }
 }        // namespace
 
-namespace fs
+AndroidPlatform::AndroidPlatform(const PlatformContext &context) :
+    Platform{context}
 {
-void create_directory(const std::string &path)
-{
-	if (!is_directory(path))
+	if (auto *android = dynamic_cast<const AndroidPlatformContext *>(&context))
 	{
-		mkdir(path.c_str(), 0777);
+		app = android->app;
 	}
-}
-}        // namespace fs
-
-AndroidPlatform::AndroidPlatform(android_app *app) :
-    app{app}
-{
 }
 
 ExitCode AndroidPlatform::initialize(const std::vector<Plugin *> &plugins)
 {
+	android_app_set_key_event_filter(app, key_event_filter);
+	android_app_set_motion_event_filter(app, motion_event_filter);
+
 	app->onAppCmd                                  = on_app_cmd;
-	app->onInputEvent                              = on_input_event;
 	app->activity->callbacks->onContentRectChanged = on_content_rect_changed;
 	app->userData                                  = this;
 
@@ -443,6 +379,65 @@ void AndroidPlatform::create_window(const Window::Properties &properties)
 	window = std::make_unique<AndroidWindow>(this, app->window, properties);
 }
 
+void AndroidPlatform::process_android_input_events(void)
+{
+	auto input_buf = android_app_swap_input_buffers(app);
+	if (!input_buf)
+	{
+		return;
+	}
+	if (input_buf->motionEventsCount)
+	{
+		for (int idx = 0; idx < input_buf->motionEventsCount; idx++)
+		{
+			auto event = &input_buf->motionEvents[idx];
+			assert((event->source == AINPUT_SOURCE_MOUSE ||
+			        event->source == AINPUT_SOURCE_TOUCHSCREEN) &&
+			       "Invalid motion event source");
+
+			std::int32_t action = event->action;
+
+			float x = GameActivityPointerAxes_getX(&event->pointers[0]);
+			float y = GameActivityPointerAxes_getY(&event->pointers[0]);
+
+			if (event->source == AINPUT_SOURCE_MOUSE)
+			{
+				input_event(MouseButtonInputEvent{
+				    translate_mouse_button(0),
+				    translate_mouse_action(action),
+				    x, y});
+			}
+			else if (event->source == AINPUT_SOURCE_TOUCHSCREEN)
+			{
+				// Multiple pointers are not supported.
+				size_t       pointer_count = event->pointerCount;
+				std::int32_t pointer_id    = event->pointers[0].id;
+
+				input_event(TouchInputEvent{
+				    pointer_id,
+				    pointer_count,
+				    translate_touch_action(action),
+				    x, y});
+			}
+		}
+		android_app_clear_motion_events(input_buf);
+	}
+
+	if (input_buf->keyEventsCount)
+	{
+		for (int idx = 0; idx < input_buf->keyEventsCount; idx++)
+		{
+			auto event = &input_buf->keyEvents[idx];
+			assert((event->source == AINPUT_SOURCE_KEYBOARD) &&
+			       "Invalid key event source");
+			input_event(KeyInputEvent{
+			    translate_key_code(event->keyCode),
+			    translate_key_action(event->action)});
+		}
+		android_app_clear_key_events(input_buf);
+	}
+}
+
 void AndroidPlatform::terminate(ExitCode code)
 {
 	switch (code)
@@ -466,18 +461,13 @@ void AndroidPlatform::terminate(ExitCode code)
 	Platform::terminate(code);
 }
 
-const char *AndroidPlatform::get_surface_extension()
-{
-	return VK_KHR_ANDROID_SURFACE_EXTENSION_NAME;
-}
-
 void AndroidPlatform::send_notification(const std::string &message)
 {
 	JNIEnv *env;
 	app->activity->vm->AttachCurrentThread(&env, NULL);
-	jclass    cls         = env->GetObjectClass(app->activity->clazz);
+	jclass    cls         = env->GetObjectClass(app->activity->javaGameActivity);
 	jmethodID fatal_error = env->GetMethodID(cls, "fatalError", "(Ljava/lang/String;)V");
-	env->CallVoidMethod(app->activity->clazz, fatal_error, env->NewStringUTF(message.c_str()));
+	env->CallVoidMethod(app->activity->javaGameActivity, fatal_error, env->NewStringUTF(message.c_str()));
 	app->activity->vm->DetachCurrentThread();
 }
 
@@ -486,7 +476,7 @@ void AndroidPlatform::set_surface_ready()
 	surface_ready = true;
 }
 
-ANativeActivity *AndroidPlatform::get_activity()
+GameActivity *AndroidPlatform::get_activity()
 {
 	return app->activity;
 }
@@ -494,28 +484,6 @@ ANativeActivity *AndroidPlatform::get_activity()
 android_app *AndroidPlatform::get_android_app()
 {
 	return app;
-}
-
-std::unique_ptr<RenderContext> AndroidPlatform::create_render_context(Device &device, VkSurfaceKHR surface, const std::vector<VkSurfaceFormatKHR> &surface_format_priority) const
-{
-	auto context = Platform::create_render_context(device, surface, surface_format_priority);
-
-	context->set_present_mode_priority({VK_PRESENT_MODE_FIFO_KHR,
-	                                    VK_PRESENT_MODE_MAILBOX_KHR,
-	                                    VK_PRESENT_MODE_IMMEDIATE_KHR});
-
-	switch (window_properties.vsync)
-	{
-		case Window::Vsync::OFF:
-			context->request_present_mode(VK_PRESENT_MODE_MAILBOX_KHR);
-			break;
-		case Window::Vsync::ON:
-		default:
-			context->request_present_mode(VK_PRESENT_MODE_FIFO_KHR);
-			break;
-	}
-
-	return std::move(context);
 }
 
 std::vector<spdlog::sink_ptr> AndroidPlatform::get_platform_sinks()

@@ -1,5 +1,5 @@
-/* Copyright (c) 2020, Bradley Austin Davis
- * Copyright (c) 2020, Arm Limited
+/* Copyright (c) 2020-2024, Bradley Austin Davis
+ * Copyright (c) 2020-2024, Arm Limited
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -49,7 +49,7 @@ class OpenGLInterop : public ApiVulkanSample
 	OpenGLInterop();
 	~OpenGLInterop();
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	void render(float delta_time) override;
 	void build_command_buffers() override;
@@ -69,7 +69,7 @@ class OpenGLInterop : public ApiVulkanSample
 
 	vkb::Timer        timer;
 	OffscreenContext *gl_context{nullptr};
-	GLData *          gl_data{nullptr};
+	GLData           *gl_data{nullptr};
 
 	struct ShareHandles
 	{
@@ -113,4 +113,4 @@ class OpenGLInterop : public ApiVulkanSample
 	VkDescriptorSetLayout descriptor_set_layout{VK_NULL_HANDLE};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_open_gl_interop();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_open_gl_interop();

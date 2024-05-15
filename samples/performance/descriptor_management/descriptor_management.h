@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,12 +21,12 @@
 #include "scene_graph/components/perspective_camera.h"
 #include "vulkan_sample.h"
 
-class DescriptorManagement : public vkb::VulkanSample
+class DescriptorManagement : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	DescriptorManagement();
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	virtual ~DescriptorManagement() = default;
 
@@ -34,12 +34,12 @@ class DescriptorManagement : public vkb::VulkanSample
 
   private:
 	/**
-	  * @brief Struct that contains radio button labeling and the value
-	  *        which is selected
-	  */
+	 * @brief Struct that contains radio button labeling and the value
+	 *        which is selected
+	 */
 	struct RadioButtonGroup
 	{
-		const char *              description;
+		const char               *description;
 		std::vector<const char *> options;
 		int                       value;
 	};
@@ -61,4 +61,4 @@ class DescriptorManagement : public vkb::VulkanSample
 	virtual void draw_gui() override;
 };
 
-std::unique_ptr<vkb::VulkanSample> create_descriptor_management();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_descriptor_management();

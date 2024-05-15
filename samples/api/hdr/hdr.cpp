@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2023, Sascha Willems
+/* Copyright (c) 2019-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -30,7 +30,7 @@ HDR::HDR()
 
 HDR::~HDR()
 {
-	if (device)
+	if (has_device())
 	{
 		vkDestroyPipeline(get_device().get_handle(), pipelines.skybox, nullptr);
 		vkDestroyPipeline(get_device().get_handle(), pipelines.reflect, nullptr);
@@ -288,26 +288,12 @@ void HDR::create_attachment(VkFormat format, VkImageUsageFlagBits usage, FrameBu
 void HDR::prepare_offscreen_buffer()
 {
 	// We need to select a format that supports the color attachment blending flag, so we iterate over multiple formats to find one that supports this flag
-	VkFormat color_format{VK_FORMAT_UNDEFINED};
-
 	const std::vector<VkFormat> float_format_priority_list = {
 	    VK_FORMAT_R32G32B32A32_SFLOAT,
-	    VK_FORMAT_R16G16B16A16_SFLOAT};
+	    VK_FORMAT_R16G16B16A16_SFLOAT        // Guaranteed blend support for this
+	};
 
-	for (auto &format : float_format_priority_list)
-	{
-		const VkFormatProperties properties = get_device().get_gpu().get_format_properties(format);
-		if (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT)
-		{
-			color_format = format;
-			break;
-		}
-	}
-
-	if (color_format == VK_FORMAT_UNDEFINED)
-	{
-		throw std::runtime_error("No suitable float format could be determined");
-	}
+	VkFormat color_format = vkb::choose_blendable_format(get_device().get_gpu().get_handle(), float_format_priority_list);
 
 	{
 		offscreen.width  = width;
@@ -316,13 +302,13 @@ void HDR::prepare_offscreen_buffer()
 		// Color attachments
 
 		// We are using two 128-Bit RGBA floating point color buffers for this sample
-		// In a performance or bandwith-limited scenario you should consider using a format with lower precision
+		// In a performance or bandwidth-limited scenario you should consider using a format with lower precision
 		create_attachment(color_format, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, &offscreen.color[0]);
 		create_attachment(color_format, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, &offscreen.color[1]);
 		// Depth attachment
 		create_attachment(depth_format, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, &offscreen.depth);
 
-		// Set up separate renderpass with references to the colorand depth attachments
+		// Set up separate renderpass with references to the color and depth attachments
 		std::array<VkAttachmentDescription, 3> attachment_descriptions = {};
 
 		// Init attachment properties
@@ -364,24 +350,31 @@ void HDR::prepare_offscreen_buffer()
 		subpass.colorAttachmentCount    = 2;
 		subpass.pDepthStencilAttachment = &depth_reference;
 
-		// Use subpass dependencies for attachment layput transitions
+		// Use subpass dependencies for attachment layout transitions
 		std::array<VkSubpassDependency, 2> dependencies;
 
 		dependencies[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
 		dependencies[0].dstSubpass      = 0;
-		dependencies[0].srcStageMask    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-		dependencies[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		dependencies[0].srcAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
-		dependencies[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		// End of previous commands
+		dependencies[0].srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+		dependencies[0].srcAccessMask = 0;
+		// Read/write from/to depth
+		dependencies[0].dstStageMask  = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+		dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		// Write to attachment
+		dependencies[0].dstStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependencies[0].dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
 		dependencies[1].srcSubpass      = 0;
 		dependencies[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
-		dependencies[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		dependencies[1].dstStageMask    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-		dependencies[1].srcAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		dependencies[1].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
 		dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		// End of write to attachment
+		dependencies[1].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		// Attachment later read using sampler in 'composition' pipeline
+		dependencies[1].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
 		VkRenderPassCreateInfo render_pass_create_info = {};
 		render_pass_create_info.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -410,11 +403,16 @@ void HDR::prepare_offscreen_buffer()
 		framebuffer_create_info.layers                  = 1;
 		VK_CHECK(vkCreateFramebuffer(get_device().get_handle(), &framebuffer_create_info, nullptr, &offscreen.framebuffer));
 
+		// Calculate valid filter and mipmap modes
+		VkFilter            filter      = VK_FILTER_NEAREST;
+		VkSamplerMipmapMode mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		vkb::make_filters_valid(get_device().get_gpu().get_handle(), color_format, &filter, &mipmap_mode);
+
 		// Create sampler to sample from the color attachments
 		VkSamplerCreateInfo sampler = vkb::initializers::sampler_create_info();
-		sampler.magFilter           = VK_FILTER_NEAREST;
-		sampler.minFilter           = VK_FILTER_NEAREST;
-		sampler.mipmapMode          = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		sampler.magFilter           = filter;
+		sampler.minFilter           = filter;
+		sampler.mipmapMode          = mipmap_mode;
 		sampler.addressModeU        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 		sampler.addressModeV        = sampler.addressModeU;
 		sampler.addressModeW        = sampler.addressModeU;
@@ -434,7 +432,7 @@ void HDR::prepare_offscreen_buffer()
 		// Floating point color attachment
 		create_attachment(color_format, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, &filter_pass.color[0]);
 
-		// Set up separate renderpass with references to the colorand depth attachments
+		// Set up separate renderpass with references to the color and depth attachments
 		std::array<VkAttachmentDescription, 1> attachment_descriptions = {};
 
 		// Init attachment properties
@@ -455,24 +453,31 @@ void HDR::prepare_offscreen_buffer()
 		subpass.pColorAttachments    = color_references.data();
 		subpass.colorAttachmentCount = 1;
 
-		// Use subpass dependencies for attachment layput transitions
+		// Use subpass dependencies for attachment layout transitions
 		std::array<VkSubpassDependency, 2> dependencies;
 
 		dependencies[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
 		dependencies[0].dstSubpass      = 0;
-		dependencies[0].srcStageMask    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-		dependencies[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		dependencies[0].srcAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
-		dependencies[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		// End of previous commands
+		dependencies[0].srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+		dependencies[0].srcAccessMask = 0;
+		// Read from image in fragment shader
+		dependencies[0].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		dependencies[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		// Write to attachment
+		dependencies[0].dstStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependencies[0].dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
 		dependencies[1].srcSubpass      = 0;
 		dependencies[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
-		dependencies[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		dependencies[1].dstStageMask    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-		dependencies[1].srcAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		dependencies[1].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
 		dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		// End of write to attachment
+		dependencies[1].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		// Attachment later read using sampler in 'bloom[0]' pipeline
+		dependencies[1].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
 		VkRenderPassCreateInfo render_pass_create_info = {};
 		render_pass_create_info.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -499,11 +504,16 @@ void HDR::prepare_offscreen_buffer()
 		framebuffer_create_info.layers                  = 1;
 		VK_CHECK(vkCreateFramebuffer(get_device().get_handle(), &framebuffer_create_info, nullptr, &filter_pass.framebuffer));
 
+		// Calculate valid filter and mipmap modes
+		VkFilter            filter      = VK_FILTER_NEAREST;
+		VkSamplerMipmapMode mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		vkb::make_filters_valid(get_device().get_gpu().get_handle(), color_format, &filter, &mipmap_mode);
+
 		// Create sampler to sample from the color attachments
 		VkSamplerCreateInfo sampler = vkb::initializers::sampler_create_info();
-		sampler.magFilter           = VK_FILTER_NEAREST;
-		sampler.minFilter           = VK_FILTER_NEAREST;
-		sampler.mipmapMode          = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		sampler.magFilter           = filter;
+		sampler.minFilter           = filter;
+		sampler.mipmapMode          = mipmap_mode;
 		sampler.addressModeU        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 		sampler.addressModeV        = sampler.addressModeU;
 		sampler.addressModeW        = sampler.addressModeU;
@@ -688,7 +698,7 @@ void HDR::prepare_pipelines()
 	        1,
 	        &blend_attachment_state);
 
-	// Note: Using Reversed depth-buffer for increased precision, so Greater depth values are kept
+	// Note: Using reversed depth-buffer for increased precision, so Greater depth values are kept
 	VkPipelineDepthStencilStateCreateInfo depth_stencil_state =
 	    vkb::initializers::pipeline_depth_stencil_state_create_info(
 	        VK_FALSE,
@@ -874,9 +884,9 @@ void HDR::draw()
 	ApiVulkanSample::submit_frame();
 }
 
-bool HDR::prepare(vkb::Platform &platform)
+bool HDR::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!ApiVulkanSample::prepare(platform))
+	if (!ApiVulkanSample::prepare(options))
 	{
 		return false;
 	}
@@ -885,7 +895,7 @@ bool HDR::prepare(vkb::Platform &platform)
 	camera.set_position(glm::vec3(0.0f, 0.0f, -4.0f));
 	camera.set_rotation(glm::vec3(0.0f, 180.0f, 0.0f));
 
-	// Note: Using Revsered depth-buffer for increased precision, so Znear and Zfar are flipped
+	// Note: Using reversed depth-buffer for increased precision, so Znear and Zfar are flipped
 	camera.set_perspective(60.0f, static_cast<float>(width) / static_cast<float>(height), 256.0f, 0.1f);
 
 	load_assets();
@@ -920,19 +930,19 @@ void HDR::on_update_ui_overlay(vkb::Drawer &drawer)
 		if (drawer.combo_box("Object type", &models.object_index, object_names))
 		{
 			update_uniform_buffers();
-			build_command_buffers();
+			rebuild_command_buffers();
 		}
-		if (drawer.input_float("Exposure", &ubo_params.exposure, 0.025f, 3))
+		if (drawer.input_float("Exposure", &ubo_params.exposure, 0.025f, "%.3f"))
 		{
 			update_params();
 		}
 		if (drawer.checkbox("Bloom", &bloom))
 		{
-			build_command_buffers();
+			rebuild_command_buffers();
 		}
 		if (drawer.checkbox("Skybox", &display_skybox))
 		{
-			build_command_buffers();
+			rebuild_command_buffers();
 		}
 	}
 }
