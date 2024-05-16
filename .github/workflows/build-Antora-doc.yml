@@ -57,11 +57,6 @@ jobs:
         working-directory: ./Vulkan-Site/docs-site
         run: npm install
 
-      - name: "run npm install for Vulkan-Docs"
-        working-directory: ./Vulkan-Site/Vulkan-Docs
-        run: npm install
-
-
       - name: "ensure we have all dependencies for building/searching/highlighting"
         run: |
           sudo gem install rouge
