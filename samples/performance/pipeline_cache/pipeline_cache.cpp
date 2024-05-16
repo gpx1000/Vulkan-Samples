@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2020, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,11 +19,12 @@
 
 #include <imgui_internal.h>
 
-#include "common/logging.h"
 #include "core/device.h"
+#include "core/util/logging.hpp"
+#include "filesystem/legacy.h"
 #include "gui.h"
-#include "platform/filesystem.h"
-#include "platform/platform.h"
+#include "platform/window.h"
+
 #include "rendering/subpasses/forward_subpass.h"
 #include "scene_graph/node.h"
 #include "stats/stats.h"
@@ -42,25 +43,25 @@ PipelineCache::~PipelineCache()
 	{
 		/* Get size of pipeline cache */
 		size_t size{};
-		VK_CHECK(vkGetPipelineCacheData(device->get_handle(), pipeline_cache, &size, nullptr));
+		VK_CHECK(vkGetPipelineCacheData(get_device().get_handle(), pipeline_cache, &size, nullptr));
 
 		/* Get data of pipeline cache */
 		std::vector<uint8_t> data(size);
-		VK_CHECK(vkGetPipelineCacheData(device->get_handle(), pipeline_cache, &size, data.data()));
+		VK_CHECK(vkGetPipelineCacheData(get_device().get_handle(), pipeline_cache, &size, data.data()));
 
 		/* Write pipeline cache data to a file in binary format */
 		vkb::fs::write_temp(data, "pipeline_cache.data");
 
 		/* Destroy Vulkan pipeline cache */
-		vkDestroyPipelineCache(device->get_handle(), pipeline_cache, nullptr);
+		vkDestroyPipelineCache(get_device().get_handle(), pipeline_cache, nullptr);
 	}
 
-	vkb::fs::write_temp(device->get_resource_cache().serialize(), "cache.data");
+	vkb::fs::write_temp(get_device().get_resource_cache().serialize(), "cache.data");
 }
 
-bool PipelineCache::prepare(vkb::Platform &platform)
+bool PipelineCache::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!VulkanSample::prepare(platform))
+	if (!VulkanSample::prepare(options))
 	{
 		return false;
 	}
@@ -83,9 +84,9 @@ bool PipelineCache::prepare(vkb::Platform &platform)
 	create_info.pInitialData    = pipeline_data.data();
 
 	/* Create Vulkan pipeline cache */
-	VK_CHECK(vkCreatePipelineCache(device->get_handle(), &create_info, nullptr, &pipeline_cache));
+	VK_CHECK(vkCreatePipelineCache(get_device().get_handle(), &create_info, nullptr, &pipeline_cache));
 
-	vkb::ResourceCache &resource_cache = device->get_resource_cache();
+	vkb::ResourceCache &resource_cache = get_device().get_resource_cache();
 
 	// Use pipeline cache to store pipelines
 	resource_cache.set_pipeline_cache(pipeline_cache);
@@ -104,26 +105,26 @@ bool PipelineCache::prepare(vkb::Platform &platform)
 	// Build all pipelines from a previous run
 	resource_cache.warmup(data_cache);
 
-	stats->request_stats({vkb::StatIndex::frame_times});
+	get_stats().request_stats({vkb::StatIndex::frame_times});
 
-	float dpi_factor = platform.get_window().get_dpi_factor();
+	float dpi_factor = window->get_dpi_factor();
 
 	button_size.x = button_size.x * dpi_factor;
 	button_size.y = button_size.y * dpi_factor;
 
-	gui = std::make_unique<vkb::Gui>(*this, platform.get_window(), stats.get());
+	create_gui(*window, &get_stats());
 
 	load_scene("scenes/sponza/Sponza01.gltf");
 
-	auto &camera_node = vkb::add_free_camera(*scene, "main_camera", get_render_context().get_surface_extent());
+	auto &camera_node = vkb::add_free_camera(get_scene(), "main_camera", get_render_context().get_surface_extent());
 	camera            = &camera_node.get_component<vkb::sg::Camera>();
 
 	vkb::ShaderSource vert_shader("base.vert");
 	vkb::ShaderSource frag_shader("base.frag");
-	auto              scene_subpass = std::make_unique<vkb::ForwardSubpass>(get_render_context(), std::move(vert_shader), std::move(frag_shader), *scene, *camera);
+	auto              scene_subpass = std::make_unique<vkb::ForwardSubpass>(get_render_context(), std::move(vert_shader), std::move(frag_shader), get_scene(), *camera);
 
-	auto render_pipeline = vkb::RenderPipeline();
-	render_pipeline.add_subpass(std::move(scene_subpass));
+	auto render_pipeline = std::make_unique<vkb::RenderPipeline>();
+	render_pipeline->add_subpass(std::move(scene_subpass));
 
 	set_render_pipeline(std::move(render_pipeline));
 
@@ -132,11 +133,11 @@ bool PipelineCache::prepare(vkb::Platform &platform)
 
 void PipelineCache::draw_gui()
 {
-	gui->show_options_window(
+	get_gui().show_options_window(
 	    /* body = */ [this]() {
 		    if (ImGui::Checkbox("Pipeline cache", &enable_pipeline_cache))
 		    {
-			    vkb::ResourceCache &resource_cache = device->get_resource_cache();
+			    vkb::ResourceCache &resource_cache = get_device().get_resource_cache();
 
 			    if (enable_pipeline_cache)
 			    {
@@ -154,8 +155,8 @@ void PipelineCache::draw_gui()
 
 		    if (ImGui::Button("Destroy Pipelines", button_size))
 		    {
-			    device->wait_idle();
-			    device->get_resource_cache().clear_pipelines();
+			    get_device().wait_idle();
+			    get_device().get_resource_cache().clear_pipelines();
 			    record_frame_time_next_frame = true;
 		    }
 
@@ -182,7 +183,7 @@ void PipelineCache::update(float delta_time)
 	VulkanSample::update(delta_time);
 }
 
-std::unique_ptr<vkb::VulkanSample> create_pipeline_cache()
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_pipeline_cache()
 {
 	return std::make_unique<PipelineCache>();
 }

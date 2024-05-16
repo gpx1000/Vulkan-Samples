@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+/* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -23,12 +23,16 @@
 #include "core/hpp_image_view.h"
 #include "core/hpp_pipeline_layout.h"
 #include "debug_info.h"
-#include "platform/filesystem.h"
+#include "drawer.h"
+#include "filesystem/legacy.h"
 #include "platform/input_events.h"
 #include "stats/hpp_stats.h"
 
 namespace vkb
 {
+template <vkb::BindingType bindingType>
+class VulkanSample;
+
 /**
  * @brief Helper structure for fonts loaded from TTF
  */
@@ -58,114 +62,10 @@ struct HPPFont
 	}
 
 	std::vector<uint8_t> data;
-	ImFont              *handle = nullptr;
+	ImFont	          *handle = nullptr;
 	std::string          name;
 	float                size = 0.0f;
 };
-
-/**
- * @brief Responsible for drawing new elements into the gui
- */
-class HPPDrawer
-{
-  public:
-	HPPDrawer() = default;
-
-	/**
-	 * @brief Clears the dirty bit set
-	 */
-	void clear();
-
-	/**
-	 * @brief Returns true if the drawer has been updated
-	 */
-	bool is_dirty() const;
-
-	/**
-	 * @brief May be used to force drawer update
-	 */
-	void set_dirty(bool dirty);
-
-	/**
-	 * @brief Adds a collapsable header item to the gui
-	 * @param caption The text to display
-	 * @returns True if adding item was successful
-	 */
-	bool header(const std::string &caption) const;
-
-	/**
-	 * @brief Adds a checkbox to the gui
-	 * @param caption The text to display
-	 * @param value The boolean value to map the checkbox to
-	 * @returns True if adding item was successful
-	 */
-	bool checkbox(const std::string &caption, bool *value);
-
-	/**
-	 * @brief Adds a checkbox to the gui
-	 * @param caption The text to display
-	 * @param value The integer value to map the checkbox to
-	 * @returns True if adding item was successful
-	 */
-	bool checkbox(const std::string &caption, int32_t *value);
-
-	/**
-	 * @brief Adds a number input field to the gui
-	 * @param caption The text to display
-	 * @param value The value to map to
-	 * @param step The step increment
-	 * @param precision The precision
-	 * @returns True if adding item was successful
-	 */
-	bool input_float(const std::string &caption, float *value, float step, uint32_t precision);
-
-	/**
-	 * @brief Adds a slide bar to the gui for floating points to the gui
-	 * @param caption The text to display
-	 * @param value The value to map to
-	 * @param min The minimum value
-	 * @param max The maximum value
-	 * @returns True if adding item was successful
-	 */
-	bool slider_float(const std::string &caption, float *value, float min, float max);
-
-	/**
-	 * @brief Adds a slide bar to the gui for integers to the gui
-	 * @param caption The text to display
-	 * @param value The value to map to
-	 * @param min The minimum value
-	 * @param max The maximum value
-	 * @returns True if adding item was successful
-	 */
-	bool slider_int(const std::string &caption, int32_t *value, int32_t min, int32_t max);
-
-	/**
-	 * @brief Adds a multiple choice drop box to the gui
-	 * @param caption The text to display
-	 * @param itemindex The item index to display
-	 * @param items The items to display in the box
-	 * @returns True if adding item was successful
-	 */
-	bool combo_box(const std::string &caption, int32_t *itemindex, std::vector<std::string> items);
-
-	/**
-	 * @brief Adds a clickable button to the gui
-	 * @param caption The text to display
-	 * @returns True if adding item was successful
-	 */
-	bool button(const std::string &caption);
-
-	/**
-	 * @brief Adds a label to the gui
-	 * @param formatstr The format string
-	 */
-	void text(const char *formatstr, ...);
-
-  private:
-	bool dirty = false;
-};
-
-class HPPVulkanSample;
 
 /**
  * @brief Vulkan helper class for Dear ImGui, based on vulkan.hpp
@@ -205,6 +105,8 @@ class HPPGui
   public:
 	// The name of the default font file to use
 	static const std::string default_font;
+	// Used to show/hide the GUI
+	static bool visible;
 
   public:
 	/**
@@ -215,11 +117,11 @@ class HPPGui
 	 * @param font_size The font size
 	 * @param explicit_update If true, update buffers every frame
 	 */
-	HPPGui(HPPVulkanSample                &sample,
-	       const vkb::platform::HPPWindow &window,
-	       const vkb::stats::HPPStats     *stats           = nullptr,
-	       float                           font_size       = 21.0f,
-	       bool                            explicit_update = false);
+	HPPGui(VulkanSample<vkb::BindingType::Cpp> &sample,
+	       const vkb::Window                   &window,
+	       const vkb::stats::HPPStats          *stats           = nullptr,
+	       float                                font_size       = 21.0f,
+	       bool                                 explicit_update = false);
 
 	/**
 	 * @brief Destroys the HPPGui
@@ -311,7 +213,7 @@ class HPPGui
 	 */
 	const StatsView &get_stats_view() const;
 
-	HPPDrawer &get_drawer();
+	Drawer &get_drawer();
 
 	HPPFont const &get_font(const std::string &font_name = HPPGui::default_font) const;
 
@@ -356,7 +258,7 @@ class HPPGui
 
   private:
 	PushConstBlock                           push_const_block;
-	HPPVulkanSample                         &sample;
+	VulkanSample<vkb::BindingType::Cpp>     &sample;
 	std::unique_ptr<vkb::core::HPPBuffer>    vertex_buffer;
 	std::unique_ptr<vkb::core::HPPBuffer>    index_buffer;
 	size_t                                   last_vertex_buffer_size = 0;
@@ -364,7 +266,7 @@ class HPPGui
 	float                                    content_scale_factor    = 1.0f;        // Scale factor to apply due to a difference between the window and GL pixel sizes
 	float                                    dpi_factor              = 1.0f;        // Scale factor to apply to the size of gui elements (expressed in dp)
 	bool                                     explicit_update         = false;
-	HPPDrawer                                drawer;
+	Drawer                                   drawer;
 	std::vector<HPPFont>                     fonts;
 	std::unique_ptr<vkb::core::HPPImage>     font_image;
 	std::unique_ptr<vkb::core::HPPImageView> font_image_view;
@@ -376,10 +278,10 @@ class HPPGui
 	vk::DescriptorSetLayout                  descriptor_set_layout = nullptr;
 	vk::DescriptorSet                        descriptor_set        = nullptr;
 	vk::Pipeline                             pipeline              = nullptr;
-	Timer                                    timer;                                // Used to measure duration of input events
-	bool                                     visible                = true;        // Used to show/hide the GUI
+	Timer                                    timer;        // Used to measure duration of input events
 	bool                                     prev_visible           = true;
 	bool                                     two_finger_tap         = false;        // Whether or not the GUI has detected a multi touch gesture
 	bool                                     show_graph_file_output = false;
+	uint32_t                                 subpass                = 0;
 };
 }        // namespace vkb

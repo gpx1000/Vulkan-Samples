@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2023, Arm Limited and Contributors
+/* Copyright (c) 2021-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -61,6 +61,11 @@ PostProcessingSubpass &PostProcessingSubpass::bind_input_attachment(const std::s
 
 	parent->load_stores_dirty = true;
 	return *this;
+}
+
+void PostProcessingSubpass::unbind_sampled_image(const std::string &name)
+{
+	sampled_images.erase(name);
 }
 
 PostProcessingSubpass &PostProcessingSubpass::bind_sampled_image(const std::string &name, core::SampledImage &&new_image)
@@ -160,8 +165,14 @@ void PostProcessingSubpass::draw(CommandBuffer &command_buffer)
 	{
 		if (auto layout_binding = bindings.get_layout_binding(it.first))
 		{
-			const auto &view    = it.second.get_image_view(render_target);
-			const auto &sampler = it.second.get_sampler() ? *it.second.get_sampler() : *parent->default_sampler;
+			const auto &view = it.second.get_image_view(render_target);
+
+			// Get the properties for the image format. We need to check whether a linear sampler is valid.
+			const VkFormatProperties fmtProps          = get_render_context().get_device().get_gpu().get_format_properties(view.get_format());
+			bool                     has_linear_filter = (fmtProps.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT);
+
+			const auto &sampler = it.second.get_sampler() ? *it.second.get_sampler() :
+			                                                (has_linear_filter ? *parent->default_sampler : *parent->default_sampler_nearest);
 
 			command_buffer.bind_image(view, sampler, 0, layout_binding->binding, 0);
 		}
@@ -211,6 +222,12 @@ PostProcessingRenderPass::PostProcessingRenderPass(PostProcessingPipeline *paren
 		sampler_info.borderColor      = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 
 		this->default_sampler = std::make_unique<vkb::core::Sampler>(get_render_context().get_device(), sampler_info);
+
+		// Also create a nearest filtering version as a fallback
+		sampler_info.minFilter = VK_FILTER_NEAREST;
+		sampler_info.magFilter = VK_FILTER_NEAREST;
+
+		this->default_sampler_nearest = std::make_unique<vkb::core::Sampler>(get_render_context().get_device(), sampler_info);
 	}
 }
 
@@ -370,12 +387,19 @@ void PostProcessingRenderPass::transition_attachments(
 			continue;
 		}
 
-		// The resolving depth occurs in the COLOR_ATTACHMENT_OUT stage, not in the EARLY\LATE_FRAGMENT_TESTS stage
-		// and the corresponding access mask is COLOR_ATTACHMENT_WRITE_BIT, not DEPTH_STENCIL_ATTACHMENT_WRITE_BIT.
-		if (is_depth_resolve && prev_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+		if (prev_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
 		{
-			prev_pass_barrier_info.pipeline_stage    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			prev_pass_barrier_info.image_read_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			// Synchronize with previous pass writes as barrier below might do image transition
+			prev_pass_barrier_info.pipeline_stage |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			prev_pass_barrier_info.image_read_access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+			// The resolving depth occurs in the COLOR_ATTACHMENT_OUT stage, not in the EARLY\LATE_FRAGMENT_TESTS stage
+			// and the corresponding access mask is COLOR_ATTACHMENT_WRITE_BIT, not DEPTH_STENCIL_ATTACHMENT_WRITE_BIT.
+			if (is_depth_resolve)
+			{
+				prev_pass_barrier_info.pipeline_stage |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+				prev_pass_barrier_info.image_read_access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			}
 		}
 		else
 		{
@@ -400,7 +424,7 @@ void PostProcessingRenderPass::transition_attachments(
 	{
 		assert(output < views.size());
 		const VkFormat      attachment_format = views[output].get_format();
-		const bool          is_depth_stencil  = vkb::is_depth_only_format(attachment_format) || vkb::is_depth_stencil_format(attachment_format);
+		const bool          is_depth_stencil  = vkb::is_depth_format(attachment_format);
 		const VkImageLayout output_layout     = is_depth_stencil ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		if (render_target.get_layout(output) == output_layout)
 		{

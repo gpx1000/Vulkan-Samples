@@ -1,4 +1,4 @@
-/* Copyright (c) 2018-2022, Arm Limited and Contributors
+/* Copyright (c) 2018-2023, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <android_native_app_glue.h>
+#include <game-activity/native_app_glue/android_native_app_glue.h>
 
 #include "common/vk_common.h"
 #include "platform/window.h"
@@ -62,6 +62,8 @@ class AndroidWindow : public Window
 	virtual void close() override;
 
 	virtual float get_dpi_factor() const override;
+
+	std::vector<const char *> get_required_surface_extensions() const override;
 
   private:
 	AndroidPlatform *platform;

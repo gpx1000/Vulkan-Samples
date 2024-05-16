@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2020, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -25,14 +25,14 @@
 /**
  * @brief Using framebuffer compression to reduce bandwidth
  */
-class AFBCSample : public vkb::VulkanSample
+class AFBCSample : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	AFBCSample();
 
 	virtual ~AFBCSample() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	virtual void update(float delta_time) override;
 
@@ -50,4 +50,4 @@ class AFBCSample : public vkb::VulkanSample
 	std::chrono::system_clock::time_point start_time;
 };
 
-std::unique_ptr<vkb::VulkanSample> create_afbc();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_afbc();

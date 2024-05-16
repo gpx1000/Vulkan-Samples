@@ -1,5 +1,5 @@
-/* Copyright (c) 2018-2021, Arm Limited and Contributors
- * Copyright (c) 2019-2021, Sascha Willems
+/* Copyright (c) 2018-2024, Arm Limited and Contributors
+ * Copyright (c) 2019-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -29,10 +29,12 @@
 #include "core/command_buffer.h"
 #include "core/sampler.h"
 #include "debug_info.h"
-#include "platform/filesystem.h"
+#include "drawer.h"
+#include "filesystem/legacy.h"
 #include "platform/input_events.h"
 #include "rendering/render_context.h"
 #include "stats/stats.h"
+#include "vulkan_sample.h"
 
 namespace vkb
 {
@@ -74,110 +76,6 @@ struct Font
 
 	float size{};
 };
-
-/**
- * @brief Responsible for drawing new elements into the gui
- */
-class Drawer
-{
-  public:
-	Drawer() = default;
-
-	/** 
-	 * @brief Clears the dirty bit set
-	 */
-	void clear();
-
-	/** 
-	 * @brief Returns true if the drawer has been updated
-	 */
-	bool is_dirty();
-
-	/**
-	 * @brief May be used to force drawer update
-	 */
-	void set_dirty(bool dirty);
-
-	/**
-	 * @brief Adds a collapsable header item to the gui
-	 * @param caption The text to display
-	 * @returns True if adding item was successful
-	 */
-	bool header(const char *caption);
-
-	/**
-	 * @brief Adds a checkbox to the gui
-	 * @param caption The text to display
-	 * @param value The boolean value to map the checkbox to
-	 * @returns True if adding item was successful
-	 */
-	bool checkbox(const char *caption, bool *value);
-
-	/**
-	 * @brief Adds a checkbox to the gui
-	 * @param caption The text to display
-	 * @param value The integer value to map the checkbox to
-	 * @returns True if adding item was successful
-	 */
-	bool checkbox(const char *caption, int32_t *value);
-
-	/**
-	 * @brief Adds a number input field to the gui
-	 * @param caption The text to display
-	 * @param value The value to map to
-	 * @param step The step increment
-	 * @param precision The precision
-	 * @returns True if adding item was successful
-	 */
-	bool input_float(const char *caption, float *value, float step, uint32_t precision);
-
-	/**
-	 * @brief Adds a slide bar to the gui for floating points to the gui
-	 * @param caption The text to display
-	 * @param value The value to map to
-	 * @param min The minimum value
-	 * @param max The maximum value
-	 * @returns True if adding item was successful
-	 */
-	bool slider_float(const char *caption, float *value, float min, float max);
-
-	/**
-	 * @brief Adds a slide bar to the gui for integers to the gui
-	 * @param caption The text to display
-	 * @param value The value to map to
-	 * @param min The minimum value
-	 * @param max The maximum value
-	 * @returns True if adding item was successful
-	 */
-	bool slider_int(const char *caption, int32_t *value, int32_t min, int32_t max);
-
-	/**
-	 * @brief Adds a multiple choice drop box to the gui
-	 * @param caption The text to display
-	 * @param itemindex The item index to display
-	 * @param items The items to display in the box
-	 * @returns True if adding item was successful
-	 */
-	bool combo_box(const char *caption, int32_t *itemindex, std::vector<std::string> items);
-
-	/**
-	 * @brief Adds a clickable button to the gui
-	 * @param caption The text to display
-	 * @returns True if adding item was successful
-	 */
-	bool button(const char *caption);
-
-	/**
-	 * @brief Adds a label to the gui
-	 * @param formatstr The format string
-	 */
-	void text(const char *formatstr, ...);
-
-  private:
-	bool dirty{false};
-};
-
-class VulkanSample;
 
 /**
  * @brief Vulkan helper class for Dear ImGui
@@ -239,6 +137,9 @@ class Gui
 		glm::vec2 translate;
 	} push_const_block;
 
+	/// Used to show/hide the GUI
+	static bool visible;
+
 	/**
 	 * @brief Initializes the Gui
 	 * @param sample A vulkan render context
@@ -247,8 +148,7 @@ class Gui
 	 * @param font_size The font size
 	 * @param explicit_update If true, update buffers every frame
 	 */
-	Gui(VulkanSample &sample, const Window &window, const Stats *stats = nullptr,
-	    const float font_size = 21.0f, bool explicit_update = false);
+	Gui(VulkanSample<vkb::BindingType::C> &sample, const Window &window, const Stats *stats = nullptr, const float font_size = 21.0f, bool explicit_update = false);
 
 	/**
 	 * @brief Destroys the Gui
@@ -346,6 +246,8 @@ class Gui
 
 	bool is_debug_view_active() const;
 
+	void set_subpass(const uint32_t subpass);
+
   private:
 	/**
 	 * @brief Block size of a buffer pool in kilobytes
@@ -368,7 +270,7 @@ class Gui
 
 	static const ImGuiWindowFlags info_flags;
 
-	VulkanSample &sample;
+	VulkanSample<vkb::BindingType::C> &sample;
 
 	std::unique_ptr<core::Buffer> vertex_buffer;
 
@@ -412,15 +314,14 @@ class Gui
 	/// Used to measure duration of input events
 	Timer timer;
 
-	/// Used to show/hide the GUI
-	bool visible{true};
-
 	bool prev_visible{true};
 
 	/// Whether or not the GUI has detected a multi touch gesture
 	bool two_finger_tap = false;
 
 	bool show_graph_file_output = false;
+
+	uint32_t subpass = 0;
 };
 
 void Gui::new_frame()

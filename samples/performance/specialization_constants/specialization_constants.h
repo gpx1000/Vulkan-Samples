@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2020, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -36,14 +36,14 @@ struct alignas(16) CustomForwardLights
 /**
  * @brief Using specialization constants
  */
-class SpecializationConstants : public vkb::VulkanSample
+class SpecializationConstants : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	SpecializationConstants();
 
 	virtual ~SpecializationConstants() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	/**
 	 * @brief This subpass is responsible for rendering a Scene
@@ -82,7 +82,7 @@ class SpecializationConstants : public vkb::VulkanSample
 				if (lights.size() < light_count)
 				{
 					const auto &properties = scene_light->get_properties();
-					auto &      transform  = scene_light->get_node()->get_transform();
+					auto       &transform  = scene_light->get_node()->get_transform();
 
 					vkb::Light light{{transform.get_translation(), static_cast<float>(scene_light->get_light_type())},
 					                 {properties.color, properties.intensity},
@@ -95,7 +95,7 @@ class SpecializationConstants : public vkb::VulkanSample
 
 			std::copy(lights.begin(), lights.end(), light_info.lights);
 
-			auto &                render_frame = get_render_context().get_active_frame();
+			auto                 &render_frame = get_render_context().get_active_frame();
 			vkb::BufferAllocation light_buffer = render_frame.allocate_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(T));
 			light_buffer.update(light_info);
 
@@ -121,4 +121,4 @@ class SpecializationConstants : public vkb::VulkanSample
 	int specialization_constants_enabled{0};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_specialization_constants();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_specialization_constants();

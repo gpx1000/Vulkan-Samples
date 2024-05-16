@@ -1,4 +1,4 @@
-/* Copyright (c) 2020-2021, Arm Limited and Contributors
+/* Copyright (c) 2020-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -22,14 +22,14 @@
 /**
  * @brief Using 16-bit storage features to reduce bandwidth for input-output data between vertex and fragment shaders.
  */
-class KHR16BitStorageInputOutputSample : public vkb::VulkanSample
+class KHR16BitStorageInputOutputSample : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	KHR16BitStorageInputOutputSample();
 
 	virtual ~KHR16BitStorageInputOutputSample() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	virtual void update(float delta_time) override;
 
@@ -60,4 +60,4 @@ class KHR16BitStorageInputOutputSample : public vkb::VulkanSample
 	bool supports_16bit_storage{false};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_16bit_storage_input_output();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_16bit_storage_input_output();

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2022, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -22,30 +22,42 @@
 #include <mutex>
 #include <vector>
 
+#include <fmt/format.h>
 #include <spdlog/async_logger.h>
 #include <spdlog/details/thread_pool.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/spdlog.h>
 
-#include "common/logging.h"
+#include "core/util/logging.hpp"
+#include "filesystem/legacy.h"
 #include "force_close/force_close.h"
-#include "platform/filesystem.h"
 #include "platform/parsers/CLI11.h"
 #include "platform/plugins/plugin.h"
+#include "vulkan_sample.h"
+
+namespace plugins
+{
+class BenchmarkMode;
+}
 
 namespace vkb
 {
 const uint32_t Platform::MIN_WINDOW_WIDTH  = 420;
 const uint32_t Platform::MIN_WINDOW_HEIGHT = 320;
 
-std::vector<std::string> Platform::arguments = {};
-
 std::string Platform::external_storage_directory = "";
 
 std::string Platform::temp_directory = "";
 
-ExitCode Platform::initialize(const std::vector<Plugin *> &plugins = {})
+Platform::Platform(const PlatformContext &context)
+{
+	arguments = context.arguments();
+
+	external_storage_directory = context.external_storage_directory();
+	temp_directory             = context.temp_directory();
+}
+
+ExitCode Platform::initialize(const std::vector<Plugin *> &plugins)
 {
 	auto sinks = get_platform_sinks();
 
@@ -103,6 +115,11 @@ ExitCode Platform::initialize(const std::vector<Plugin *> &plugins = {})
 		return ExitCode::Close;
 	}
 
+	if (!app_requested())
+	{
+		return ExitCode::NoSample;
+	}
+
 	create_window(window_properties);
 
 	if (!window)
@@ -114,12 +131,68 @@ ExitCode Platform::initialize(const std::vector<Plugin *> &plugins = {})
 	return ExitCode::Success;
 }
 
+ExitCode Platform::main_loop_frame()
+{
+    if (!app_requested())
+    {
+        return ExitCode::NoSample;
+    }
+
+    if (!window->should_close() && !close_requested)
+    {
+        try
+        {
+            // Load the requested app
+            if (app_requested())
+            {
+                if (!start_app())
+                {
+                    LOGE("Failed to load requested application");
+                    return ExitCode::FatalError;
+                }
+
+                // Compensate for load times of the app by rendering the first frame pre-emptively
+                timer.tick<Timer::Seconds>();
+                active_app->update(0.01667f);
+            }
+
+            update();
+
+            if (active_app && active_app->should_close())
+            {
+                std::string id = active_app->get_name();
+                on_app_close(id);
+                active_app->finish();
+            }
+
+            window->process_events();
+        }
+        catch (std::exception &e)
+        {
+            LOGE("Error Message: {}", e.what());
+            LOGE("Failed when running application {}", active_app->get_name());
+
+            on_app_error(active_app->get_name());
+
+            if (app_requested())
+            {
+                LOGI("Attempting to load next application");
+            }
+            else
+            {
+                return ExitCode::FatalError;
+            }
+        }
+    }
+
+    return ExitCode::Success;
+}
+
 ExitCode Platform::main_loop()
 {
 	if (!app_requested())
 	{
-		LOGI("An app was not requested, can not continue");
-		return ExitCode::Close;
+		return ExitCode::NoSample;
 	}
 
 	while (!window->should_close() && !close_requested)
@@ -141,6 +214,13 @@ ExitCode Platform::main_loop()
 			}
 
 			update();
+
+			if (active_app && active_app->should_close())
+			{
+				std::string id = active_app->get_name();
+				on_app_close(id);
+				active_app->finish();
+			}
 
 			window->process_events();
 		}
@@ -178,38 +258,26 @@ void Platform::update()
 			delta_time = simulation_frame_time;
 		}
 
+		active_app->update_overlay(delta_time, [=]() {
+			on_update_ui_overlay(*active_app->get_drawer());
+		});
 		active_app->update(delta_time);
+
+		if (auto *app = dynamic_cast<VulkanSample<vkb::BindingType::Cpp> *>(active_app.get()))
+		{
+			if (app->has_render_context())
+			{
+				on_post_draw(reinterpret_cast<vkb::RenderContext &>(app->get_render_context()));
+			}
+		}
+		else if (auto *app = dynamic_cast<VulkanSample<vkb::BindingType::C> *>(active_app.get()))
+		{
+			if (app->has_render_context())
+			{
+				on_post_draw(app->get_render_context());
+			}
+		}
 	}
-}
-
-std::unique_ptr<RenderContext> Platform::create_render_context(Device &device, VkSurfaceKHR surface, const std::vector<VkSurfaceFormatKHR> &surface_format_priority) const
-{
-	assert(!surface_format_priority.empty() && "Surface format priority list must contain at least one preferred surface format");
-
-	auto context = std::make_unique<RenderContext>(device, surface, *window);
-
-	context->set_surface_format_priority(surface_format_priority);
-
-	context->request_image_format(surface_format_priority[0].format);
-
-	context->set_present_mode_priority({
-	    VK_PRESENT_MODE_MAILBOX_KHR,
-	    VK_PRESENT_MODE_FIFO_KHR,
-	    VK_PRESENT_MODE_IMMEDIATE_KHR,
-	});
-
-	switch (window_properties.vsync)
-	{
-		case Window::Vsync::ON:
-			context->request_present_mode(VK_PRESENT_MODE_FIFO_KHR);
-			break;
-		case Window::Vsync::OFF:
-		default:
-			context->request_present_mode(VK_PRESENT_MODE_MAILBOX_KHR);
-			break;
-	}
-
-	return std::move(context);
 }
 
 void Platform::terminate(ExitCode code)
@@ -223,12 +291,24 @@ void Platform::terminate(ExitCode code)
 		}
 	}
 
+	if (code == ExitCode::NoSample)
+	{
+		LOGI("");
+		LOGI("No sample was requested or the selected sample does not exist");
+		LOGI("");
+		LOGI("To run a specific sample use the \"sample\" argument, e.g.");
+		LOGI("");
+		LOGI("\tvulkan_samples sample hello_triangle");
+		LOGI("");
+		LOGI("To get a list of available samples, use the \"samples\" argument")
+		LOGI("To get a list of available command line options, use the \"-h\" or \"--help\" argument");
+		LOGI("");
+	}
+
 	if (active_app)
 	{
 		std::string id = active_app->get_name();
-
 		on_app_close(id);
-
 		active_app->finish();
 	}
 
@@ -239,14 +319,14 @@ void Platform::terminate(ExitCode code)
 
 	on_platform_close();
 
+#ifdef PLATFORM__WINDOWS
 	// Halt on all unsuccessful exit codes unless ForceClose is in use
 	if (code != ExitCode::Success && !using_plugin<::plugins::ForceClose>())
 	{
-#ifndef ANDROID
-		std::cout << "Press any key to continue";
+		std::cout << "Press return to continue";
 		std::cin.get();
-#endif
 	}
+#endif
 }
 
 void Platform::close()
@@ -313,24 +393,9 @@ Window &Platform::get_window()
 	return *window;
 }
 
-std::vector<std::string> &Platform::get_arguments()
-{
-	return Platform::arguments;
-}
-
-void Platform::set_arguments(const std::vector<std::string> &args)
-{
-	arguments = args;
-}
-
 void Platform::set_external_storage_directory(const std::string &dir)
 {
 	external_storage_directory = dir;
-}
-
-void Platform::set_temp_directory(const std::string &dir)
-{
-	temp_directory = dir;
 }
 
 std::vector<spdlog::sink_ptr> Platform::get_platform_sinks()
@@ -353,7 +418,7 @@ void Platform::request_application(const apps::AppInfo *app)
 bool Platform::start_app()
 {
 	auto *requested_app_info = requested_app;
-	// Reset early incase error in preperation stage
+	// Reset early incase error in preparation stage
 	requested_app = nullptr;
 
 	if (active_app)
@@ -376,7 +441,7 @@ bool Platform::start_app()
 		return false;
 	}
 
-	if (!active_app->prepare(*this))
+	if (!active_app->prepare({false, window.get()}))
 	{
 		LOGE("Failed to prepare vulkan app.");
 		return false;
@@ -458,6 +523,11 @@ void Platform::on_app_close(const std::string &app_id)
 void Platform::on_platform_close()
 {
 	HOOK(Hook::OnPlatformClose, on_platform_close());
+}
+
+void Platform::on_update_ui_overlay(vkb::Drawer &drawer)
+{
+	HOOK(Hook::OnUpdateUi, on_update_ui_overlay(drawer));
 }
 
 #undef HOOK

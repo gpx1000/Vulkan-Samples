@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2022, Sascha Willems
+/* Copyright (c) 2019-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -74,28 +74,49 @@ struct Vertex
 };
 
 /**
+ * @brief The structure of a vertex for storage buffer
+ * Simplified to position and normal for easier alignment
+ */
+struct AlignedVertex
+{
+	glm::vec4 pos;
+	glm::vec4 normal;
+};
+
+/**
+ * @brief The structure of a meshlet for mesh shader
+ */
+struct Meshlet
+{
+	uint32_t vertices[64];
+	uint32_t indices[126];
+	uint32_t vertex_count;
+	uint32_t index_count;
+};
+
+/**
  * @brief Sascha Willems base class for use in his ported samples into the framework
  *
  * See vkb::VulkanSample for documentation
  */
-class ApiVulkanSample : public vkb::VulkanSample
+class ApiVulkanSample : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	ApiVulkanSample() = default;
 
 	virtual ~ApiVulkanSample();
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	virtual void input_event(const vkb::InputEvent &input_event) override;
 
 	virtual void update(float delta_time) override;
 
+	virtual void update_overlay(float delta_time, const std::function<void()> &additional_ui) override;
+
 	virtual bool resize(const uint32_t width, const uint32_t height) override;
 
 	virtual void render(float delta_time) = 0;
-
-	vkb::Device &get_device();
 
 	enum RenderPassCreateFlags
 	{
@@ -106,8 +127,7 @@ class ApiVulkanSample : public vkb::VulkanSample
 	/// Stores the swapchain image buffers
 	std::vector<SwapchainBuffer> swapchain_buffers;
 
-	virtual void create_render_context(vkb::Platform &platform) override;
-	virtual void prepare_render_context() override;
+	virtual void create_render_context() override;
 
 	// Handle to the device graphics queue that command buffers are submitted to
 	VkQueue queue;
@@ -159,14 +179,14 @@ class ApiVulkanSample : public vkb::VulkanSample
 	std::vector<VkFence> wait_fences;
 
 	/**
-	 * @brief Populates the swapchain_buffers vector with the image and imageviews 
+	 * @brief Populates the swapchain_buffers vector with the image and imageviews
 	 */
 	void create_swapchain_buffers();
 
 	/**
 	 * @brief Updates the swapchains image usage, if a swapchain exists and recreates all resources based on swapchain images
 	 * @param image_usage_flags The usage flags the new swapchain images will have
- 	 */
+	 */
 	void update_swapchain_image_usage_flags(std::set<VkImageUsageFlagBits> image_usage_flags);
 
 	/**
@@ -197,7 +217,7 @@ class ApiVulkanSample : public vkb::VulkanSample
 	Texture load_texture(const std::string &file, vkb::sg::Image::ContentType content_type);
 
 	/**
-	 * @brief Laods in a ktx 2D texture array
+	 * @brief Loads in a ktx 2D texture array
 	 * @param file The filename of the texture to load
 	 * @param content_type The type of content in the image file
 	 */
@@ -214,15 +234,17 @@ class ApiVulkanSample : public vkb::VulkanSample
 	 * @brief Loads in a single model from a GLTF file
 	 * @param file The filename of the model to load
 	 * @param index The index of the model to load from the GLTF file (default: 0)
+	 * @param storage_buffer Set true to store model in SSBO
 	 */
-	std::unique_ptr<vkb::sg::SubMesh> load_model(const std::string &file, uint32_t index = 0);
+	std::unique_ptr<vkb::sg::SubMesh> load_model(const std::string &file, uint32_t index = 0, bool storage_buffer = false);
 
 	/**
 	 * @brief Records the necessary drawing commands to a command buffer
 	 * @param model The model to draw
 	 * @param command_buffer The command buffer to record to
+	 * @param instance_count The number of instances (default: 1)
 	 */
-	void draw_model(std::unique_ptr<vkb::sg::SubMesh> &model, VkCommandBuffer command_buffer);
+	void draw_model(std::unique_ptr<vkb::sg::SubMesh> &model, VkCommandBuffer command_buffer, uint32_t instance_count = 1);
 
 	/**
 	 * @brief Synchronously execute a block code within a command buffer, then submit the command buffer and wait for completion.
@@ -230,6 +252,12 @@ class ApiVulkanSample : public vkb::VulkanSample
 	 * @param signalSemaphore An optional semaphore to signal when the commands have completed execution.
 	 */
 	void with_command_buffer(const std::function<void(VkCommandBuffer command_buffer)> &f, VkSemaphore signalSemaphore = VK_NULL_HANDLE);
+
+	/**
+	 * @brief Synchronously execute a block code within a command buffer vkb wrapper, then submit the command buffer and wait for completion.
+	 * @param f a block of code which is passed a command buffer which is already in the begin state.
+	 */
+	void with_vkb_command_buffer(const std::function<void(vkb::CommandBuffer &command_buffer)> &f);
 
   public:
 	/**
@@ -250,6 +278,11 @@ class ApiVulkanSample : public vkb::VulkanSample
 	 *        Called when the framebuffers need to be rebuilt
 	 */
 	virtual void build_command_buffers() = 0;
+
+	/**
+	 * @brief Rebuild the command buffers by first resetting the corresponding command pool and then building the command buffers.
+	 */
+	void rebuild_command_buffers();
 
 	/**
 	 * @brief Creates the fences for rendering
@@ -300,6 +333,11 @@ class ApiVulkanSample : public vkb::VulkanSample
 	void destroy_command_buffers();
 
 	/**
+	 * @brief Recreate the current command buffer draw_cmd_buffer[current_buffer]
+	 */
+	void recreate_current_command_buffer();
+
+	/**
 	 * @brief Create a cache pool for rendering pipelines
 	 */
 	void create_pipeline_cache();
@@ -308,11 +346,12 @@ class ApiVulkanSample : public vkb::VulkanSample
 	 * @brief Load a SPIR-V shader
 	 * @param file The file location of the shader relative to the shaders folder
 	 * @param stage The shader stage
+	 * @param src_language The shader language
 	 */
-	VkPipelineShaderStageCreateInfo load_shader(const std::string &file, VkShaderStageFlagBits stage);
+	VkPipelineShaderStageCreateInfo load_shader(const std::string &file, VkShaderStageFlagBits stage, vkb::ShaderSourceLanguage src_language = vkb::ShaderSourceLanguage::GLSL);
 
 	/**
-	 * @brief Updates the overlay 
+	 * @brief Updates the overlay
 	 * @param delta_time The time taken since the last frame
 	 */
 	void update_overlay(float delta_time);
@@ -324,7 +363,7 @@ class ApiVulkanSample : public vkb::VulkanSample
 	void draw_ui(const VkCommandBuffer command_buffer);
 
 	/**
-	 * @brief Prepare the frame for workload submission, acquires the next image from the swap chain and 
+	 * @brief Prepare the frame for workload submission, acquires the next image from the swap chain and
 	 *        sets the default wait and signal semaphores
 	 */
 	void prepare_frame();
@@ -339,6 +378,11 @@ class ApiVulkanSample : public vkb::VulkanSample
 	 * @param drawer The drawer from the gui to draw certain elements
 	 */
 	virtual void on_update_ui_overlay(vkb::Drawer &drawer);
+
+	/**
+	 * @brief Initializes the UI. Can be overridden to customize the way it is displayed.
+	 */
+	virtual void prepare_gui();
 
   private:
 	/** brief Indicates that the view (position, rotation) has changed and buffers containing camera matrices need to be updated */
@@ -359,15 +403,6 @@ class ApiVulkanSample : public vkb::VulkanSample
 	bool     prepared = false;
 	uint32_t width    = 1280;
 	uint32_t height   = 720;
-
-	/** @brief Example settings that can be changed e.g. by command line arguments */
-	struct Settings
-	{
-		/** @brief Set to true if fullscreen mode has been requested via command line */
-		bool fullscreen = false;
-		/** @brief Set to true if v-sync will be forced for the swapchain */
-		bool vsync = false;
-	} settings;
 
 	VkClearColorValue default_clear_color = {{0.002f, 0.002f, 0.002f, 1.0f}};
 
@@ -404,12 +439,6 @@ class ApiVulkanSample : public vkb::VulkanSample
 
 	struct
 	{
-		glm::vec2 axis_left  = glm::vec2(0.0f);
-		glm::vec2 axis_right = glm::vec2(0.0f);
-	} game_pad_state;
-
-	struct
-	{
 		bool left   = false;
 		bool right  = false;
 		bool middle = false;
@@ -420,7 +449,10 @@ class ApiVulkanSample : public vkb::VulkanSample
 		int32_t x;
 		int32_t y;
 	} touch_pos;
-	bool    touch_down    = false;
-	double  touch_timer   = 0.0;
-	int64_t last_tap_time = 0;
+	bool   touch_down  = false;
+	double touch_timer = 0.0;
+
+	uint32_t frame_count      = 0;
+	float    accumulated_time = 0.0f;
+	uint32_t fps              = 1;        // to prevent division by zero on first frame
 };

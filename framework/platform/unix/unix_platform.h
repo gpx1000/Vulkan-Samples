@@ -1,4 +1,4 @@
-/* Copyright (c) 2018-2021, Arm Limited and Contributors
+/* Copyright (c) 2018-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -24,17 +24,16 @@ namespace vkb
 enum UnixType
 {
 	Mac,
+	Ios,
 	Linux
 };
 
 class UnixPlatform : public Platform
 {
   public:
-	UnixPlatform(const UnixType &type, int argc, char **argv);
+	UnixPlatform(const PlatformContext &context, const UnixType &type);
 
 	virtual ~UnixPlatform() = default;
-
-	virtual const char *get_surface_extension() override;
 
   protected:
 	virtual void create_window(const Window::Properties &properties) override;

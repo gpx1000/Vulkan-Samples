@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2021, Sascha Willems
+/* Copyright (c) 2019-2023, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -55,10 +55,9 @@ class Instancing : public ApiVulkanSample
 	// Contains the instanced data
 	struct InstanceBuffer
 	{
-		VkBuffer               buffer = VK_NULL_HANDLE;
-		VkDeviceMemory         memory = VK_NULL_HANDLE;
-		size_t                 size   = 0;
-		VkDescriptorBufferInfo descriptor;
+		std::unique_ptr<vkb::core::Buffer> buffer;
+		size_t                             size = 0;
+		VkDescriptorBufferInfo             descriptor;
 	} instance_buffer;
 
 	struct UBOVS
@@ -103,7 +102,7 @@ class Instancing : public ApiVulkanSample
 	void         prepare_uniform_buffers();
 	void         update_uniform_buffer(float delta_time);
 	void         draw();
-	bool         prepare(vkb::Platform &platform) override;
+	bool         prepare(const vkb::ApplicationOptions &options) override;
 	virtual void render(float delta_time) override;
 	virtual void on_update_ui_overlay(vkb::Drawer &drawer) override;
 	virtual bool resize(const uint32_t width, const uint32_t height) override;

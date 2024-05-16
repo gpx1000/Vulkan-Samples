@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+/* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,14 +17,13 @@
 
 #pragma once
 
-#include <hpp_vulkan_sample.h>
-
 #include <camera.h>
 #include <common/hpp_error.h>
 #include <hpp_gui.h>
-#include <platform/hpp_platform.h>
 #include <scene_graph/components/hpp_image.h>
 #include <scene_graph/components/hpp_sub_mesh.h>
+
+#include "vulkan_sample.h"
 
 /**
  * @brief A swapchain buffer
@@ -61,14 +60,14 @@ struct HPPVertex
  *
  * See vkb::ApiVulkanSample for documentation
  */
-class HPPApiVulkanSample : public vkb::HPPVulkanSample
+class HPPApiVulkanSample : public vkb::VulkanSample<vkb::BindingType::Cpp>
 {
   public:
 	HPPApiVulkanSample() = default;
 
 	virtual ~HPPApiVulkanSample();
 
-	bool prepare(vkb::platform::HPPPlatform &platform) override;
+	bool prepare(const vkb::ApplicationOptions &options) override;
 
 	void input_event(const vkb::InputEvent &input_event) override;
 
@@ -87,7 +86,7 @@ class HPPApiVulkanSample : public vkb::HPPVulkanSample
 	/// Stores the swapchain image buffers
 	std::vector<HPPSwapchainBuffer> swapchain_buffers;
 
-	void create_render_context(vkb::platform::HPPPlatform const &platform) override;
+	void create_render_context() override;
 	void prepare_render_context() override;
 
 	// Handle to the device graphics queue that command buffers are submitted to
@@ -140,19 +139,28 @@ class HPPApiVulkanSample : public vkb::HPPVulkanSample
 	std::vector<vk::Fence> wait_fences;
 
 	/**
-   * @brief Populates the swapchain_buffers vector with the image and imageviews
-   */
+	 * @brief Creates a vulkan sampler
+	 * @param address_mode The samplers address mode
+	 * @param mipmaps_count The samplers mipmaps count
+	 * @param format The image format that will be sampled
+	 * @returns A valid vk::Sampler
+	 */
+	vk::Sampler create_default_sampler(vk::SamplerAddressMode address_mode, size_t mipmaps_count, vk::Format format);
+
+	/**
+	 * @brief Populates the swapchain_buffers vector with the image and imageviews
+	 */
 	void create_swapchain_buffers();
 
 	/**
-   * @brief Updates the swapchains image usage, if a swapchain exists and recreates all resources based on swapchain images
-   * @param image_usage_flags The usage flags the new swapchain images will have
-   */
+	 * @brief Updates the swapchains image usage, if a swapchain exists and recreates all resources based on swapchain images
+	 * @param image_usage_flags The usage flags the new swapchain images will have
+	 */
 	void update_swapchain_image_usage_flags(std::set<vk::ImageUsageFlagBits> const &image_usage_flags);
 
 	/**
-   * @brief Handles changes to the surface, e.g. on resize
-   */
+	 * @brief Handles changes to the surface, e.g. on resize
+	 */
 	void handle_surface_changes();
 
 	/**
@@ -163,155 +171,173 @@ class HPPApiVulkanSample : public vkb::HPPVulkanSample
 	vk::ImageLayout descriptor_type_to_image_layout(vk::DescriptorType descriptor_type, vk::Format format) const;
 
 	/**
-   * @brief Loads in a ktx 2D texture
-   * @param file The filename of the texture to load
-   * @param content_type The type of content in the image file
-   */
-	HPPTexture load_texture(const std::string &file, vkb::sg::Image::ContentType content_type);
+	 * @brief Loads in a ktx 2D texture
+	 * @param file The filename of the texture to load
+	 * @param content_type The type of content in the image file
+	 * @param address_mode The address mode to use in u-, v-, and w-direction. Defaults to /c vk::SamplerAddressMode::eRepeat.
+	 */
+	HPPTexture
+	    load_texture(const std::string &file, vkb::scene_graph::components::HPPImage::ContentType content_type, vk::SamplerAddressMode address_mode = vk::SamplerAddressMode::eRepeat);
 
 	/**
-   * @brief Laods in a ktx 2D texture array
-   * @param file The filename of the texture to load
-   * @param content_type The type of content in the image file
-   */
-	HPPTexture load_texture_array(const std::string &file, vkb::sg::Image::ContentType content_type);
+	 * @brief Loads in a ktx 2D texture array
+	 * @param file The filename of the texture to load
+	 * @param content_type The type of content in the image file
+	 * @param address_mode The address mode to use in u-, v-, and w-direction. Defaults to /c vk::SamplerAddressMode::eClampToEdge.
+	 */
+	HPPTexture load_texture_array(const std::string                                  &file,
+	                              vkb::scene_graph::components::HPPImage::ContentType content_type,
+	                              vk::SamplerAddressMode                              address_mode = vk::SamplerAddressMode::eClampToEdge);
 
 	/**
-   * @brief Loads in a ktx 2D texture cubemap
-   * @param file The filename of the texture to load
-   * @param content_type The type of content in the image file
-   */
-	HPPTexture load_texture_cubemap(const std::string &file, vkb::sg::Image::ContentType content_type);
+	 * @brief Loads in a ktx 2D texture cubemap
+	 * @param file The filename of the texture to load
+	 * @param content_type The type of content in the image file
+	 */
+	HPPTexture load_texture_cubemap(const std::string &file, vkb::scene_graph::components::HPPImage::ContentType content_type);
 
 	/**
-   * @brief Loads in a single model from a GLTF file
-   * @param file The filename of the model to load
-   * @param index The index of the model to load from the GLTF file (default: 0)
-   */
+	 * @brief Loads in a single model from a GLTF file
+	 * @param file The filename of the model to load
+	 * @param index The index of the model to load from the GLTF file (default: 0)
+	 */
 	std::unique_ptr<vkb::scene_graph::components::HPPSubMesh> load_model(const std::string &file, uint32_t index = 0);
 
 	/**
-   * @brief Records the necessary drawing commands to a command buffer
-   * @param model The model to draw
-   * @param command_buffer The command buffer to record to
-   */
-	void draw_model(std::unique_ptr<vkb::scene_graph::components::HPPSubMesh> &model, vk::CommandBuffer command_buffer);
+	 * @brief Records the necessary drawing commands to a command buffer
+	 * @param model The model to draw
+	 * @param command_buffer The command buffer to record to
+	 * @param instance_count The number of instances (default: 1)
+	 */
+	void draw_model(std::unique_ptr<vkb::scene_graph::components::HPPSubMesh> &model, vk::CommandBuffer command_buffer, uint32_t instance_count = 1);
 
 	/**
-   * @brief Synchronously execute a block code within a command buffer, then submit the command buffer and wait for completion.
-   * @param f a block of code which is passed a command buffer which is already in the begin state.
-   * @param signalSemaphore An optional semaphore to signal when the commands have completed execution.
-   */
+	 * @brief Synchronously execute a block code within a command buffer, then submit the command buffer and wait for completion.
+	 * @param f a block of code which is passed a command buffer which is already in the begin state.
+	 * @param signalSemaphore An optional semaphore to signal when the commands have completed execution.
+	 */
 	void with_command_buffer(const std::function<void(vk::CommandBuffer command_buffer)> &f, vk::Semaphore signalSemaphore = nullptr);
 
   public:
 	/**
-   * @brief Called when a view change occurs, can be overriden in derived samples to handle updating uniforms
-   */
+	 * @brief Called when a view change occurs, can be overriden in derived samples to handle updating uniforms
+	 */
 	virtual void view_changed();
 
 	/**
-   * @brief Called after the mouse cursor is moved and before internal events (like camera rotation) is handled
-   * @param x The width from the origin
-   * @param y The height from the origin
-   * @param handled Whether the event was handled
-   */
+	 * @brief Called after the mouse cursor is moved and before internal events (like camera rotation) is handled
+	 * @param x The width from the origin
+	 * @param y The height from the origin
+	 * @param handled Whether the event was handled
+	 */
 	virtual void mouse_moved(double x, double y, bool &handled);
 
 	/**
-   * @brief To be overridden by the derived class. Records the relevant commands to the rendering command buffers
-   *        Called when the framebuffers need to be rebuilt
-   */
+	 * @brief To be overridden by the derived class. Records the relevant commands to the rendering command buffers
+	 *        Called when the framebuffers need to be rebuilt
+	 */
 	virtual void build_command_buffers() = 0;
 
 	/**
-   * @brief Creates the fences for rendering
-   */
+	 * @brief Rebuild the command buffers by first resetting the corresponding command pool and then building the command buffers.
+	 */
+	void rebuild_command_buffers();
+
+	/**
+	 * @brief Creates the fences for rendering
+	 */
 	void create_synchronization_primitives();
 
 	/**
-   * @brief Creates a new (graphics) command pool object storing command buffers
-   */
+	 * @brief Creates a new (graphics) command pool object storing command buffers
+	 */
 	void create_command_pool();
 
 	/**
-   * @brief Setup default depth and stencil views
-   */
+	 * @brief Setup default depth and stencil views
+	 */
 	virtual void setup_depth_stencil();
 
 	/**
-   * @brief Create framebuffers for all requested swap chain images
-   *        Can be overriden in derived class to setup a custom framebuffer (e.g. for MSAA)
-   */
+	 * @brief Create framebuffers for all requested swap chain images
+	 *        Can be overriden in derived class to setup a custom framebuffer (e.g. for MSAA)
+	 */
 	virtual void setup_framebuffer();
 
 	/**
-   * @brief Setup a default render pass
-   *        Can be overriden in derived class to setup a custom render pass (e.g. for MSAA)
-   */
+	 * @brief Setup a default render pass
+	 *        Can be overriden in derived class to setup a custom render pass (e.g. for MSAA)
+	 */
 	virtual void setup_render_pass();
 
 	/**
-   * @brief Update flags for the default render pass and recreate it
-   * @param flags Optional flags for render pass creation
-   */
+	 * @brief Update flags for the default render pass and recreate it
+	 * @param flags Optional flags for render pass creation
+	 */
 	void update_render_pass_flags(RenderPassCreateFlags flags = {});
 
 	/**
-   * @brief Check if command buffers are valid (!= VK_NULL_HANDLE)
-   */
+	 * @brief Check if command buffers are valid (!= VK_NULL_HANDLE)
+	 */
 	bool check_command_buffers();
 
 	/**
-   * @brief Create command buffers for drawing commands
-   */
+	 * @brief Create command buffers for drawing commands
+	 */
 	void create_command_buffers();
 
 	/**
-   * @brief Destroy all command buffers, may be necessary during runtime if options are toggled
-   */
+	 * @brief Destroy all command buffers, may be necessary during runtime if options are toggled
+	 */
 	void destroy_command_buffers();
 
 	/**
-   * @brief Create a cache pool for rendering pipelines
-   */
+	 * @brief Create a cache pool for rendering pipelines
+	 */
 	void create_pipeline_cache();
 
 	/**
-   * @brief Load a SPIR-V shader
-   * @param file The file location of the shader relative to the shaders folder
-   * @param stage The shader stage
-   */
-	vk::PipelineShaderStageCreateInfo load_shader(const std::string &file, vk::ShaderStageFlagBits stage);
+	 * @brief Load a SPIR-V shader
+	 * @param file The file location of the shader relative to the shaders folder
+	 * @param stage The shader stage
+	 * @param src_language The shader language
+	 */
+	vk::PipelineShaderStageCreateInfo load_shader(const std::string &file, vk::ShaderStageFlagBits stage, vkb::ShaderSourceLanguage src_language = vkb::ShaderSourceLanguage::GLSL);
 
 	/**
-   * @brief Updates the overlay
-   * @param delta_time The time taken since the last frame
-   */
-	void update_overlay(float delta_time);
+	 * @brief Updates the overlay
+	 * @param delta_time The time taken since the last frame
+	 * @param additional_ui Function that implements an additional Gui
+	 */
+	void update_overlay(float delta_time, const std::function<void()> &additional_ui) override;
 
 	/**
-   * @brief If the gui is enabled, then record the drawing commands to a command buffer
-   * @param command_buffer A valid command buffer that is ready to be recorded to
-   */
+	 * @brief If the gui is enabled, then record the drawing commands to a command buffer
+	 * @param command_buffer A valid command buffer that is ready to be recorded to
+	 */
 	void draw_ui(const vk::CommandBuffer command_buffer);
 
 	/**
-   * @brief Prepare the frame for workload submission, acquires the next image from the swap chain and
-   *        sets the default wait and signal semaphores
-   */
+	 * @brief Prepare the frame for workload submission, acquires the next image from the swap chain and
+	 *        sets the default wait and signal semaphores
+	 */
 	void prepare_frame();
 
 	/**
-   * @brief Submit the frames' workload
-   */
+	 * @brief Submit the frames' workload
+	 */
 	void submit_frame();
 
 	/**
-   * @brief Called when the UI overlay is updating, can be used to add custom elements to the overlay
-   * @param drawer The drawer from the gui to draw certain elements
-   */
-	virtual void on_update_ui_overlay(vkb::HPPDrawer &drawer);
+	 * @brief Called when the UI overlay is updating, can be used to add custom elements to the overlay
+	 * @param drawer The drawer from the gui to draw certain elements
+	 */
+	virtual void on_update_ui_overlay(vkb::Drawer &drawer);
+
+	/**
+	 * @brief Initializes the UI. Can be overridden to customize the way it is displayed.
+	 */
+	virtual void prepare_gui();
 
   private:
 	/** brief Indicates that the view (position, rotation) has changed and buffers containing camera matrices need to be updated */
@@ -330,15 +356,6 @@ class HPPApiVulkanSample : public vkb::HPPVulkanSample
   public:
 	bool         prepared = false;
 	vk::Extent2D extent{1280, 720};
-
-	/** @brief Example settings that can be changed e.g. by command line arguments */
-	struct
-	{
-		/** @brief Set to true if fullscreen mode has been requested via command line */
-		bool fullscreen = false;
-		/** @brief Set to true if v-sync will be forced for the swapchain */
-		bool vsync = false;
-	} settings;
 
 	vk::ClearColorValue default_clear_color = std::array<float, 4>({{0.002f, 0.002f, 0.002f, 1.0f}});
 
@@ -375,12 +392,6 @@ class HPPApiVulkanSample : public vkb::HPPVulkanSample
 
 	struct
 	{
-		glm::vec2 axis_left  = glm::vec2(0.0f);
-		glm::vec2 axis_right = glm::vec2(0.0f);
-	} game_pad_state;
-
-	struct
-	{
 		bool left   = false;
 		bool right  = false;
 		bool middle = false;
@@ -393,7 +404,10 @@ class HPPApiVulkanSample : public vkb::HPPVulkanSample
 		int32_t x;
 		int32_t y;
 	} touch_pos;
-	bool    touch_down    = false;
-	double  touch_timer   = 0.0;
-	int64_t last_tap_time = 0;
+	bool   touch_down  = false;
+	double touch_timer = 0.0;
+
+	uint32_t frame_count      = 0;
+	float    accumulated_time = 0.0f;
+	uint32_t fps              = 1;        // to prevent division by zero on first frame
 };

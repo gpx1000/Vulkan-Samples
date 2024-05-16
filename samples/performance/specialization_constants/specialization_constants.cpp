@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2020, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,10 +20,10 @@
 #include <string>
 #include <vector>
 
+#include "filesystem/legacy.h"
 #include "gltf_loader.h"
 #include "gui.h"
-#include "platform/filesystem.h"
-#include "platform/platform.h"
+
 #include "stats/stats.h"
 
 SpecializationConstants::SpecializationConstants()
@@ -40,24 +40,24 @@ SpecializationConstants::ForwardSubpassCustomLights::ForwardSubpassCustomLights(
 {
 }
 
-bool SpecializationConstants::prepare(vkb::Platform &platform)
+bool SpecializationConstants::prepare(const vkb::ApplicationOptions &options)
 {
-	if (!VulkanSample::prepare(platform))
+	if (!VulkanSample::prepare(options))
 	{
 		return false;
 	}
 
 	load_scene("scenes/sponza/Sponza01.gltf");
-	auto &camera_node = vkb::add_free_camera(*scene, "main_camera", get_render_context().get_surface_extent());
+	auto &camera_node = vkb::add_free_camera(get_scene(), "main_camera", get_render_context().get_surface_extent());
 	camera            = dynamic_cast<vkb::sg::PerspectiveCamera *>(&camera_node.get_component<vkb::sg::Camera>());
 
 	// Create two pipelines, one with specialization constants the other with UBOs
 	specialization_constants_pipeline = create_specialization_renderpass();
 	standard_pipeline                 = create_standard_renderpass();
 
-	stats->request_stats({vkb::StatIndex::gpu_fragment_cycles});
+	get_stats().request_stats({vkb::StatIndex::gpu_fragment_cycles});
 
-	gui = std::make_unique<vkb::Gui>(*this, platform.get_window(), stats.get());
+	create_gui(*window, &get_stats());
 
 	return true;
 }
@@ -107,7 +107,8 @@ std::unique_ptr<vkb::RenderPipeline> SpecializationConstants::create_specializat
 	// Scene subpass
 	vkb::ShaderSource vert_shader{"base.vert"};
 	vkb::ShaderSource frag_shader{"specialization_constants/specialization_constants.frag"};
-	auto              scene_subpass = std::make_unique<ForwardSubpassCustomLights>(get_render_context(), std::move(vert_shader), std::move(frag_shader), *scene, *camera);
+	auto              scene_subpass =
+	    std::make_unique<ForwardSubpassCustomLights>(get_render_context(), std::move(vert_shader), std::move(frag_shader), get_scene(), *camera);
 
 	// Create specialization constants pipeline
 	std::vector<std::unique_ptr<vkb::Subpass>> scene_subpasses{};
@@ -123,7 +124,8 @@ std::unique_ptr<vkb::RenderPipeline> SpecializationConstants::create_standard_re
 	// Scene subpass
 	vkb::ShaderSource vert_shader{"base.vert"};
 	vkb::ShaderSource frag_shader{"specialization_constants/UBOs.frag"};
-	auto              scene_subpass = std::make_unique<ForwardSubpassCustomLights>(get_render_context(), std::move(vert_shader), std::move(frag_shader), *scene, *camera);
+	auto              scene_subpass =
+	    std::make_unique<ForwardSubpassCustomLights>(get_render_context(), std::move(vert_shader), std::move(frag_shader), get_scene(), *camera);
 
 	// Create base pipeline
 	std::vector<std::unique_ptr<vkb::Subpass>> scene_subpasses{};
@@ -148,7 +150,7 @@ void SpecializationConstants::draw_gui()
 	bool     landscape = camera->get_aspect_ratio() > 1.0f;
 	uint32_t lines     = landscape ? 1 : 2;
 
-	gui->show_options_window(
+	get_gui().show_options_window(
 	    /* body = */ [&]() {
 		    ImGui::RadioButton("Uniform Buffer Objects", &specialization_constants_enabled, 0);
 		    if (landscape)
@@ -160,7 +162,7 @@ void SpecializationConstants::draw_gui()
 	    /* lines = */ lines);
 }
 
-std::unique_ptr<vkb::VulkanSample> create_specialization_constants()
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_specialization_constants()
 {
 	return std::make_unique<SpecializationConstants>();
 }

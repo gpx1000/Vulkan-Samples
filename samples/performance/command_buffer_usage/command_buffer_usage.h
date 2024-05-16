@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2020, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -33,14 +33,14 @@
  *        multi-threaded recording, as well as the different
  *        strategies for recycling command buffers every frame
  */
-class CommandBufferUsage : public vkb::VulkanSample
+class CommandBufferUsage : public vkb::VulkanSample<vkb::BindingType::C>
 {
   public:
 	CommandBufferUsage();
 
 	virtual ~CommandBufferUsage() = default;
 
-	virtual bool prepare(vkb::Platform &platform) override;
+	virtual bool prepare(const vkb::ApplicationOptions &options) override;
 
 	virtual void update(float delta_time) override;
 
@@ -147,4 +147,4 @@ class CommandBufferUsage : public vkb::VulkanSample
 	uint32_t max_thread_count{0};
 };
 
-std::unique_ptr<vkb::VulkanSample> create_command_buffer_usage();
+std::unique_ptr<vkb::VulkanSample<vkb::BindingType::C>> create_command_buffer_usage();

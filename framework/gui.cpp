@@ -1,5 +1,5 @@
-/* Copyright (c) 2018-2023, Arm Limited and Contributors
- * Copyright (c) 2019-2023, Sascha Willems
+/* Copyright (c) 2018-2024, Arm Limited and Contributors
+ * Copyright (c) 2019-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -23,13 +23,10 @@
 
 #include "common/error.h"
 
-VKBP_DISABLE_WARNINGS()
 #include "common/glm_common.h"
 #include <glm/gtc/matrix_transform.hpp>
-VKBP_ENABLE_WARNINGS()
 
 #include "buffer_pool.h"
-#include "common/logging.h"
 #include "common/utils.h"
 #include "common/vk_common.h"
 #include "common/vk_initializers.h"
@@ -38,8 +35,9 @@ VKBP_ENABLE_WARNINGS()
 #include "core/pipeline.h"
 #include "core/pipeline_layout.h"
 #include "core/shader_module.h"
+#include "core/util/logging.hpp"
+#include "filesystem/legacy.h"
 #include "imgui_internal.h"
-#include "platform/filesystem.h"
 #include "platform/window.h"
 #include "rendering/render_context.h"
 #include "timer.h"
@@ -49,10 +47,10 @@ namespace vkb
 {
 namespace
 {
-void upload_draw_data(ImDrawData *draw_data, const uint8_t *vertex_data, const uint8_t *index_data)
+void upload_draw_data(const ImDrawData *draw_data, uint8_t *vertex_data, uint8_t *index_data)
 {
-	ImDrawVert *vtx_dst = (ImDrawVert *) vertex_data;
-	ImDrawIdx  *idx_dst = (ImDrawIdx *) index_data;
+	ImDrawVert *vtx_dst = reinterpret_cast<ImDrawVert *>(vertex_data);
+	ImDrawIdx  *idx_dst = reinterpret_cast<ImDrawIdx *>(index_data);
 
 	for (int n = 0; n < draw_data->CmdListsCount; n++)
 	{
@@ -75,6 +73,8 @@ inline void reset_graph_max_value(StatGraphData &graph_data)
 }
 }        // namespace
 
+bool Gui::visible = true;
+
 const double Gui::press_time_ms = 200.0f;
 
 const float Gui::overlay_alpha = 0.3f;
@@ -93,8 +93,7 @@ const ImGuiWindowFlags Gui::options_flags = Gui::common_flags;
 
 const ImGuiWindowFlags Gui::info_flags = Gui::common_flags | ImGuiWindowFlags_NoInputs;
 
-Gui::Gui(VulkanSample &sample_, const Window &window, const Stats *stats,
-         const float font_size, bool explicit_update) :
+Gui::Gui(VulkanSample<vkb::BindingType::C> &sample_, const Window &window, const Stats *stats, const float font_size, bool explicit_update) :
     sample{sample_},
     content_scale_factor{window.get_content_scale_factor()},
     dpi_factor{window.get_dpi_factor() * content_scale_factor},
@@ -146,6 +145,7 @@ Gui::Gui(VulkanSample &sample_, const Window &window, const Stats *stats,
 	io.KeyMap[ImGuiKey_UpArrow]    = static_cast<int>(KeyCode::Up);
 	io.KeyMap[ImGuiKey_DownArrow]  = static_cast<int>(KeyCode::Down);
 	io.KeyMap[ImGuiKey_Tab]        = static_cast<int>(KeyCode::Tab);
+	io.KeyMap[ImGuiKey_Escape]     = static_cast<int>(KeyCode::Backspace);
 
 	// Default font
 	fonts.emplace_back(default_font, font_size * dpi_factor);
@@ -174,8 +174,7 @@ Gui::Gui(VulkanSample &sample_, const Window &window, const Stats *stats,
 
 	// Upload font data into the vulkan image memory
 	{
-		core::Buffer stage_buffer{device, upload_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY, 0};
-		stage_buffer.update({font_data, font_data + upload_size});
+		core::Buffer stage_buffer = core::Buffer::create_staging_buffer(device, upload_size, font_data);
 
 		auto &command_buffer = device.request_command_buffer();
 
@@ -231,11 +230,15 @@ Gui::Gui(VulkanSample &sample_, const Window &window, const Stats *stats,
 		device.get_command_pool().reset_pool();
 	}
 
+	// Calculate valid filter
+	VkFilter filter = VK_FILTER_LINEAR;
+	vkb::make_filters_valid(device.get_gpu().get_handle(), font_image->get_format(), &filter);
+
 	// Create texture sampler
 	VkSamplerCreateInfo sampler_info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
 	sampler_info.maxAnisotropy = 1.0f;
-	sampler_info.magFilter     = VK_FILTER_LINEAR;
-	sampler_info.minFilter     = VK_FILTER_LINEAR;
+	sampler_info.magFilter     = filter;
+	sampler_info.minFilter     = filter;
 	sampler_info.mipmapMode    = VK_SAMPLER_MIPMAP_MODE_NEAREST;
 	sampler_info.addressModeU  = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 	sampler_info.addressModeV  = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -337,7 +340,7 @@ void Gui::prepare(const VkPipelineCache pipeline_cache, const VkRenderPass rende
 	pipeline_create_info.pDynamicState       = &dynamic_state;
 	pipeline_create_info.stageCount          = static_cast<uint32_t>(shader_stages.size());
 	pipeline_create_info.pStages             = shader_stages.data();
-	pipeline_create_info.subpass             = 0;
+	pipeline_create_info.subpass             = subpass;
 
 	// Vertex bindings an attributes based on ImGui vertex definition
 	std::vector<VkVertexInputBindingDescription> vertex_input_bindings = {
@@ -748,6 +751,11 @@ bool Gui::is_debug_view_active() const
 	return debug_view.active;
 }
 
+void Gui::set_subpass(const uint32_t subpass)
+{
+	this->subpass = subpass;
+}
+
 Gui::StatsView::StatsView(const Stats *stats)
 {
 	if (stats == nullptr)
@@ -786,11 +794,11 @@ void Gui::show_top_window(const std::string &app_name, const Stats *stats, Debug
 	// Transparent background
 	ImGui::SetNextWindowBgAlpha(overlay_alpha);
 	ImVec2 size{ImGui::GetIO().DisplaySize.x, 0.0f};
-	ImGui::SetNextWindowSize(size, ImGuiSetCond_Always);
+    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 
 	// Top left
 	ImVec2 pos{0.0f, 0.0f};
-	ImGui::SetNextWindowPos(pos, ImGuiSetCond_Always);
+    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
 
 	bool is_open = true;
 	ImGui::Begin("Top", &is_open, common_flags);
@@ -844,7 +852,7 @@ void Gui::show_debug_window(DebugInfo &debug_info, const ImVec2 &position)
 	}
 
 	ImGui::SetNextWindowBgAlpha(overlay_alpha);
-	ImGui::SetNextWindowPos(position, ImGuiSetCond_FirstUseEver);
+    ImGui::SetNextWindowPos(position, ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowContentSize(ImVec2{io.DisplaySize.x, 0.0f});
 
 	bool                   is_open = true;
@@ -875,46 +883,6 @@ void Gui::show_debug_window(DebugInfo &debug_info, const ImVec2 &position)
 	}
 	ImGui::Columns(1);
 	ImGui::EndChild();
-
-	static Timer       timer;
-	static const char *message;
-
-	if (sample.has_scene())
-	{
-		if (ImGui::Button("Save Debug Graphs"))
-		{
-			if (graphs::generate_all(sample.get_render_context(), sample.get_scene()))
-			{
-				message = "Graphs Saved!";
-			}
-			else
-			{
-				message = "Error outputting graphs!";
-			}
-
-			if (timer.is_running())
-			{
-				timer.lap();
-			}
-			else
-			{
-				timer.start();
-			}
-		}
-	}
-
-	if (timer.is_running())
-	{
-		if (timer.elapsed() > 2.0)
-		{
-			timer.stop();
-		}
-		else
-		{
-			ImGui::SameLine();
-			ImGui::Text("%s", message);
-		}
-	}
 
 	ImGui::PopFont();
 	ImGui::End();
@@ -980,7 +948,7 @@ void Gui::show_options_window(std::function<void()> body, const uint32_t lines)
 	const ImVec2 size = ImVec2(window_width, 0);
 	ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 	const ImVec2 pos = ImVec2(0.0f, ImGui::GetIO().DisplaySize.y - window_height);
-	ImGui::SetNextWindowPos(pos, ImGuiSetCond_Always);
+    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
 	const ImGuiWindowFlags flags   = (ImGuiWindowFlags_NoMove |
                                     ImGuiWindowFlags_NoScrollbar |
                                     ImGuiWindowFlags_NoTitleBar |
@@ -1003,7 +971,7 @@ void Gui::show_simple_window(const std::string &name, uint32_t last_fps, std::fu
 	ImGui::NewFrame();
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
 	ImGui::SetNextWindowPos(ImVec2(10, 10));
-	ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiSetCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Vulkan Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 	ImGui::TextUnformatted(name.c_str());
 	ImGui::TextUnformatted(std::string(sample.get_render_context().get_device().get_gpu().get_properties().deviceName).c_str());
@@ -1077,7 +1045,7 @@ bool Gui::input_event(const InputEvent &input_event)
 		}
 	}
 
-	// Toggle GUI elements when tap or clicking outside the GUI windows
+	// Toggle debug UI view when tap or clicking outside the GUI windows
 	if (!io.WantCaptureMouse)
 	{
 		bool press_down = (input_event.get_source() == EventSource::Mouse && static_cast<const MouseButtonInputEvent &>(input_event).get_action() == MouseAction::Down) || (input_event.get_source() == EventSource::Touchscreen && static_cast<const TouchInputEvent &>(input_event).get_action() == TouchAction::Down);
@@ -1103,11 +1071,7 @@ bool Gui::input_event(const InputEvent &input_event)
 				if (input_event.get_source() == EventSource::Mouse)
 				{
 					const auto &mouse_button = static_cast<const MouseButtonInputEvent &>(input_event);
-					if (mouse_button.get_button() == MouseButton::Left)
-					{
-						visible = !visible;
-					}
-					else if (mouse_button.get_button() == MouseButton::Right)
+					if (mouse_button.get_button() == MouseButton::Right)
 					{
 						debug_view.active = !debug_view.active;
 					}
@@ -1115,11 +1079,7 @@ bool Gui::input_event(const InputEvent &input_event)
 				else if (input_event.get_source() == EventSource::Touchscreen)
 				{
 					const auto &touch_event = static_cast<const TouchInputEvent &>(input_event);
-					if (!two_finger_tap && touch_event.get_touch_points() == 1)
-					{
-						visible = !visible;
-					}
-					else if (two_finger_tap && touch_event.get_touch_points() == 2)
+					if (two_finger_tap && touch_event.get_touch_points() == 2)
 					{
 						debug_view.active = !debug_view.active;
 					}
@@ -1133,117 +1093,6 @@ bool Gui::input_event(const InputEvent &input_event)
 	}
 
 	return capture_move_event;
-}
-
-void Drawer::clear()
-{
-	dirty = false;
-}
-
-bool Drawer::is_dirty()
-{
-	return dirty;
-}
-
-void Drawer::set_dirty(bool dirty)
-{
-	this->dirty = dirty;
-}
-
-bool Drawer::header(const char *caption)
-{
-	return ImGui::CollapsingHeader(caption, ImGuiTreeNodeFlags_DefaultOpen);
-}
-
-bool Drawer::checkbox(const char *caption, bool *value)
-{
-	bool res = ImGui::Checkbox(caption, value);
-	if (res)
-	{
-		dirty = true;
-	};
-	return res;
-}
-
-bool Drawer::checkbox(const char *caption, int32_t *value)
-{
-	bool val = (*value == 1);
-	bool res = ImGui::Checkbox(caption, &val);
-	*value   = val;
-	if (res)
-	{
-		dirty = true;
-	};
-	return res;
-}
-
-bool Drawer::input_float(const char *caption, float *value, float step, uint32_t precision)
-{
-	bool res = ImGui::InputFloat(caption, value, step, step * 10.0f, precision);
-	if (res)
-	{
-		dirty = true;
-	};
-	return res;
-}
-
-bool Drawer::slider_float(const char *caption, float *value, float min, float max)
-{
-	bool res = ImGui::SliderFloat(caption, value, min, max);
-	if (res)
-	{
-		dirty = true;
-	};
-	return res;
-}
-
-bool Drawer::slider_int(const char *caption, int32_t *value, int32_t min, int32_t max)
-{
-	bool res = ImGui::SliderInt(caption, value, min, max);
-	if (res)
-	{
-		dirty = true;
-	};
-	return res;
-}
-
-bool Drawer::combo_box(const char *caption, int32_t *itemindex, std::vector<std::string> items)
-{
-	if (items.empty())
-	{
-		return false;
-	}
-	std::vector<const char *> charitems;
-	charitems.reserve(items.size());
-	for (size_t i = 0; i < items.size(); i++)
-	{
-		charitems.push_back(items[i].c_str());
-	}
-	uint32_t itemCount = static_cast<uint32_t>(charitems.size());
-	bool     res       = ImGui::Combo(caption, itemindex, &charitems[0], itemCount, itemCount);
-	if (res)
-	{
-		dirty = true;
-	};
-	return res;
-}
-
-bool Drawer::button(const char *caption)
-{
-	bool res = ImGui::Button(caption);
-	if (res)
-	{
-		dirty = true;
-	};
-	return res;
-}
-
-void Drawer::text(const char *formatstr, ...)
-{
-	va_list args;
-	va_start(args, formatstr);
-	ImGui::TextV(formatstr, args);
-	va_end(args);
 }
 
 }        // namespace vkb

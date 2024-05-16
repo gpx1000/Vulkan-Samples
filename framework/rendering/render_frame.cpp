@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2023, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,8 +17,8 @@
 
 #include "render_frame.h"
 
-#include "common/logging.h"
 #include "common/utils.h"
+#include "core/util/logging.hpp"
 
 namespace vkb
 {
@@ -275,14 +275,6 @@ BufferAllocation RenderFrame::allocate_buffer(const VkBufferUsageFlags usage, co
 {
 	assert(thread_index < thread_count && "Thread index is out of bounds");
 
-	uint32_t block_multiplier = supported_usage_map.at(usage);
-
-	if (size > BUFFER_POOL_BLOCK_SIZE * 1024 * block_multiplier)
-	{
-		LOGE("Trying to allocate {} buffer of size {}KB which is larger than the buffer pool block size ({} KB)!", buffer_usage_to_string(usage), size / 1024, BUFFER_POOL_BLOCK_SIZE * block_multiplier);
-		throw std::runtime_error("Couldn't allocate render frame buffer.");
-	}
-
 	// Find a pool for this usage
 	auto buffer_pool_it = buffer_pools.find(usage);
 	if (buffer_pool_it == buffer_pools.end())
@@ -297,23 +289,13 @@ BufferAllocation RenderFrame::allocate_buffer(const VkBufferUsageFlags usage, co
 
 	bool want_minimal_block = buffer_allocation_strategy == BufferAllocationStrategy::OneAllocationPerBuffer;
 
-	if (want_minimal_block || !buffer_block)
+	if (want_minimal_block || !buffer_block || !buffer_block->can_allocate(size))
 	{
-		// If there is no block associated with the pool or we are creating a buffer for each allocation,
-		// request a new buffer block
-		buffer_block = &buffer_pool.request_buffer_block(to_u32(size), want_minimal_block);
+		// If we are creating a buffer for each allocation of there is no block associated with the pool or the current block is too small
+		// for this allocation, request a new buffer block
+		buffer_block = &buffer_pool.request_buffer_block(size, want_minimal_block);
 	}
 
-	auto data = buffer_block->allocate(to_u32(size));
-
-	// Check if the buffer block can allocate the requested size
-	if (data.empty())
-	{
-		buffer_block = &buffer_pool.request_buffer_block(to_u32(size), want_minimal_block);
-
-		data = buffer_block->allocate(to_u32(size));
-	}
-
-	return data;
+	return buffer_block->allocate(to_u32(size));
 }
 }        // namespace vkb

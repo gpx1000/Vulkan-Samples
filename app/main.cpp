@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2021, Arm Limited and Contributors
+/* Copyright (c) 2019-2024, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -15,36 +15,49 @@
  * limitations under the License.
  */
 
-#include "common/logging.h"
+#include "core/util/logging.hpp"
 #include "platform/platform.h"
 #include "plugins/plugins.h"
 
-#if defined(VK_USE_PLATFORM_ANDROID_KHR)
+#include <core/platform/entrypoint.hpp>
+#include <filesystem/filesystem.hpp>
+
+#if defined(PLATFORM__MACOS)
+#	include <TargetConditionals.h>
+#endif
+
+#if defined(PLATFORM__ANDROID)
 #	include "platform/android/android_platform.h"
-void android_main(android_app *state)
-{
-	vkb::AndroidPlatform platform{state};
-#elif defined(VK_USE_PLATFORM_WIN32_KHR)
+#elif defined(PLATFORM__WINDOWS)
 #	include "platform/windows/windows_platform.h"
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-                     PSTR lpCmdLine, INT nCmdShow)
-{
-	vkb::WindowsPlatform platform{hInstance, hPrevInstance,
-	                              lpCmdLine, nCmdShow};
-#elif defined(VK_USE_PLATFORM_DISPLAY_KHR)
+#elif defined(PLATFORM__LINUX_D2D)
 #	include "platform/unix/unix_d2d_platform.h"
-int main(int argc, char *argv[])
-{
-	vkb::UnixD2DPlatform platform{argc, argv};
-#else
+#elif defined(PLATFORM__LINUX) || defined(PLATFORM__MACOS) && !(TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE)
 #	include "platform/unix/unix_platform.h"
-int main(int argc, char *argv[])
+#elif defined(PLATFORM__MACOS) && (TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE)
+#	include "platform/ios/ios_platform.h"
+#else
+#	error "Platform not supported"
+#endif
+
+CUSTOM_MAIN(context)
 {
-#	if defined(VK_USE_PLATFORM_METAL_EXT)
-	vkb::UnixPlatform platform{vkb::UnixType::Mac, argc, argv};
-#	elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_WAYLAND_KHR)
-	vkb::UnixPlatform platform{vkb::UnixType::Linux, argc, argv};
-#	endif
+	vkb::filesystem::init_with_context(context);
+
+#if defined(PLATFORM__ANDROID)
+	vkb::AndroidPlatform platform{context};
+#elif defined(PLATFORM__WINDOWS)
+	vkb::WindowsPlatform platform{context};
+#elif defined(PLATFORM__LINUX_D2D)
+	vkb::UnixD2DPlatform platform{context};
+#elif defined(PLATFORM__LINUX)
+	vkb::UnixPlatform platform{context, vkb::UnixType::Linux};
+#elif defined(PLATFORM__MACOS) && !(TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE)
+	vkb::UnixPlatform platform{context, vkb::UnixType::Mac};
+#elif (TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE)
+	vkb::IosPlatform platform{context};
+#else
+#	error "Platform not supported"
 #endif
 
 	auto code = platform.initialize(plugins::get_all());
@@ -56,7 +69,5 @@ int main(int argc, char *argv[])
 
 	platform.terminate(code);
 
-#ifndef VK_USE_PLATFORM_ANDROID_KHR
-	return EXIT_SUCCESS;
-#endif
+	return 0;
 }

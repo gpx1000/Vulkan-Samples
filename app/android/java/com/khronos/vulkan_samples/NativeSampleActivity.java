@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2021, Arm Limited and Contributors
+/* Copyright (c) 2019-2023, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -17,7 +17,6 @@
 
 package com.khronos.vulkan_samples;
 
-import android.app.NativeActivity;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -26,13 +25,15 @@ import android.os.Bundle;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.FileProvider;
+
 import android.view.View;
 
+import com.google.androidgamesdk.GameActivity;
 import com.khronos.vulkan_samples.common.Notifications;
 
 import java.io.File;
 
-public class NativeSampleActivity extends NativeActivity {
+public class NativeSampleActivity extends GameActivity {
 
     private Context context;
 
@@ -77,7 +78,7 @@ public class NativeSampleActivity extends NativeActivity {
         intent.setDataAndType(path, context.getContentResolver().getType(path));
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-        PendingIntent pi = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+        PendingIntent pi = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, Notifications.CHANNEL_ID)
                 .setSmallIcon(R.drawable.icon)
