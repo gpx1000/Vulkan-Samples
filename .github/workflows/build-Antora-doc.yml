@@ -73,7 +73,7 @@ jobs:
           ./node_modules/gulp/bin/gulp.js bundle
 
       - name: "copy ui-bundle.zip to vulkan-site"
-        run: cp ./Vulkan-Site/antora-ui-khronos/build/ui-bundle.zip docs-site/
+        run: cp ./Vulkan-Site/antora-ui-khronos/build/ui-bundle.zip ./Vulkan-Site/docs-site/
 
       - name: "prepare repos with make"
         working-directory: ./Vulkan-Site/docs-site
