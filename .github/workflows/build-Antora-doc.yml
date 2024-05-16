@@ -83,7 +83,7 @@ jobs:
       - name: "build (npx) with stacktrace"
         working-directory: ./Vulkan-Site/docs-site
         run: |
-          npx antora antora-samples-playbook.yml --stacktrace
+          npx antora antora-parent-ci-playbook.yml --stacktrace
           touch build/site/.nojekyll
 
       - name: Publish to GitHub Pages
