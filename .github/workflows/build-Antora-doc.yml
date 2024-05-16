@@ -75,10 +75,6 @@ jobs:
       - name: "copy ui-bundle.zip to vulkan-site"
         run: cp ./Vulkan-Site/antora-ui-khronos/build/ui-bundle.zip ./Vulkan-Site/docs-site/
 
-      - name: "prepare repos with make"
-        working-directory: ./Vulkan-Site/docs-site
-        run: make prepare_components
-
       - name: "prepare samples"
         run: cmake -H"." -B"build/unix" -DVKB_GENERATE_ANTORA_SITE=ON
 
