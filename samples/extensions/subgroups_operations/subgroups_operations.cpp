@@ -16,7 +16,6 @@
  */
 
 #include "subgroups_operations.h"
-#include <glsl_compiler.h>
 
 #include <random>
 
@@ -46,9 +45,6 @@ SubgroupsOperations::SubgroupsOperations()
 
 	// Required by VK_KHR_spirv_1_4
 	add_device_extension(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
-
-	// Targeting SPIR-V version
-	vkb::GLSLCompiler::set_target_environment(glslang::EShTargetSpv, glslang::EShTargetSpv_1_4);
 
 	title                    = "Subgroups operations";
 	camera.type              = vkb::CameraType::FirstPerson;
@@ -224,10 +220,11 @@ void SubgroupsOperations::build_compute_command_buffer()
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? precompute.pipeline.pipeline : precompute.pipeline_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? precompute.pipeline.pipeline_layout : precompute.pipeline_subgroups_off.pipeline_layout, 0u, 1u, &precompute.descriptor_set, 0u, nullptr);
 #else
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, precompute.pipeline.pipeline);
-#endif
 		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, precompute.pipeline.pipeline_layout, 0u, 1u, &precompute.descriptor_set, 0u, nullptr);
+#endif
 
 		vkCmdDispatch(compute.command_buffer, 1u, grid_size, 1u);
 
@@ -250,10 +247,11 @@ void SubgroupsOperations::build_compute_command_buffer()
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? initial_tildes.pipeline.pipeline : initial_tildes.pipeline_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? initial_tildes.pipeline.pipeline_layout : initial_tildes.pipeline_subgroups_off.pipeline_layout, 0u, 1u, &initial_tildes.descriptor_set, 0u, nullptr);
 #else
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, initial_tildes.pipeline.pipeline);
-#endif
 		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, initial_tildes.pipeline.pipeline_layout, 0u, 1u, &initial_tildes.descriptor_set, 0u, nullptr);
+#endif
 
 		vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 		{
@@ -281,10 +279,11 @@ void SubgroupsOperations::build_compute_command_buffer()
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? tildes.pipeline.pipeline : tildes.pipeline_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? tildes.pipeline.pipeline_layout : tildes.pipeline_subgroups_off.pipeline_layout, 0u, 1u, &tildes.descriptor_set, 0u, nullptr);
 #else
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, tildes.pipeline.pipeline);
-#endif
 		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, tildes.pipeline.pipeline_layout, 0u, 1u, &tildes.descriptor_set, 0u, nullptr);
+#endif
 
 		vkCmdDispatch(compute.command_buffer, grid_size / 8u, grid_size, 1u);
 
@@ -310,15 +309,18 @@ void SubgroupsOperations::build_compute_command_buffer()
 	// layout (binding = 2, rgba32f) uniform image2D u_pingpong1;	-> image_descriptor_tilde_axis_y
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
+		VkPipelineLayout selected_layout = ui.subgroups_enabled ? fft.pipelines.horizontal.pipeline_layout : fft.pipelines.horizontal_subgroups_off.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft.pipelines.horizontal.pipeline : fft.pipelines.horizontal_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_y, 0u, nullptr);
 #else
+		VkPipelineLayout selected_layout = fft.pipelines.horizontal.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.horizontal.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_y, 0u, nullptr);
 #endif
-		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.horizontal.pipeline_layout, 0u, 1u, &fft.descriptor_set_axis_y, 0u, nullptr);
 
 		for (uint32_t i = 0; i < log_2_N; ++i)
 		{
-			vkCmdPushConstants(compute.command_buffer, fft.pipelines.horizontal.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
+			vkCmdPushConstants(compute.command_buffer, selected_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
 			vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 
 			{
@@ -357,15 +359,18 @@ void SubgroupsOperations::build_compute_command_buffer()
 	// layout (binding = 2, rgba32f) uniform image2D u_pingpong1;	-> image_descriptor_tilde_axis_x
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
+		VkPipelineLayout selected_layout = ui.subgroups_enabled ? fft.pipelines.horizontal.pipeline_layout : fft.pipelines.horizontal_subgroups_off.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft.pipelines.horizontal.pipeline : fft.pipelines.horizontal_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_x, 0u, nullptr);
 #else
+		VkPipelineLayout selected_layout = fft.pipelines.horizontal.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.horizontal.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_x, 0u, nullptr);
 #endif
-		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.horizontal.pipeline_layout, 0u, 1u, &fft.descriptor_set_axis_x, 0u, nullptr);
 
 		for (uint32_t i = 0; i < log_2_N; ++i)
 		{
-			vkCmdPushConstants(compute.command_buffer, fft.pipelines.horizontal.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
+			vkCmdPushConstants(compute.command_buffer, selected_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
 			vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 
 			if ((i % 2) == 0)
@@ -410,15 +415,18 @@ void SubgroupsOperations::build_compute_command_buffer()
 	// fft horizontal; for Z axis
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
+		VkPipelineLayout selected_layout = ui.subgroups_enabled ? fft.pipelines.horizontal.pipeline_layout : fft.pipelines.horizontal_subgroups_off.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft.pipelines.horizontal.pipeline : fft.pipelines.horizontal_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_z, 0u, nullptr);
 #else
+		VkPipelineLayout selected_layout = fft.pipelines.horizontal.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.horizontal.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_z, 0u, nullptr);
 #endif
-		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.horizontal.pipeline_layout, 0u, 1u, &fft.descriptor_set_axis_z, 0u, nullptr);
 
 		for (uint32_t i = 0; i < log_2_N; ++i)
 		{
-			vkCmdPushConstants(compute.command_buffer, fft.pipelines.horizontal.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
+			vkCmdPushConstants(compute.command_buffer, selected_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
 			vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 
 			{
@@ -457,15 +465,18 @@ void SubgroupsOperations::build_compute_command_buffer()
 	// fft vertical; for Y axis
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
+		VkPipelineLayout selected_layout = ui.subgroups_enabled ? fft.pipelines.vertical.pipeline_layout : fft.pipelines.vertical_subgroups_off.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft.pipelines.vertical.pipeline : fft.pipelines.vertical_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_y, 0u, nullptr);
 #else
+		VkPipelineLayout selected_layout = fft.pipelines.vertical.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.vertical.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_y, 0u, nullptr);
 #endif
-		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.vertical.pipeline_layout, 0u, 1u, &fft.descriptor_set_axis_y, 0u, nullptr);
 
 		for (uint32_t i = 0; i < log_2_N; ++i)
 		{
-			vkCmdPushConstants(compute.command_buffer, fft.pipelines.vertical.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
+			vkCmdPushConstants(compute.command_buffer, selected_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
 			vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 
 			{
@@ -504,15 +515,18 @@ void SubgroupsOperations::build_compute_command_buffer()
 	// fft vertical; for X axis
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
+		VkPipelineLayout selected_layout = ui.subgroups_enabled ? fft.pipelines.vertical.pipeline_layout : fft.pipelines.vertical_subgroups_off.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft.pipelines.vertical.pipeline : fft.pipelines.vertical_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_x, 0u, nullptr);
 #else
+		VkPipelineLayout selected_layout = fft.pipelines.vertical.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.vertical.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_x, 0u, nullptr);
 #endif
-		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.vertical.pipeline_layout, 0u, 1u, &fft.descriptor_set_axis_x, 0u, nullptr);
 
 		for (uint32_t i = 0; i < log_2_N; ++i)
 		{
-			vkCmdPushConstants(compute.command_buffer, fft.pipelines.vertical.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
+			vkCmdPushConstants(compute.command_buffer, selected_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
 			vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 
 			{
@@ -551,15 +565,18 @@ void SubgroupsOperations::build_compute_command_buffer()
 	// fft vertical; for Z axis
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
+		VkPipelineLayout selected_layout = ui.subgroups_enabled ? fft.pipelines.vertical.pipeline_layout : fft.pipelines.vertical_subgroups_off.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft.pipelines.vertical.pipeline : fft.pipelines.vertical_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_z, 0u, nullptr);
 #else
+		VkPipelineLayout selected_layout = fft.pipelines.vertical.pipeline_layout;
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.vertical.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_layout, 0u, 1u, &fft.descriptor_set_axis_z, 0u, nullptr);
 #endif
-		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft.pipelines.vertical.pipeline_layout, 0u, 1u, &fft.descriptor_set_axis_z, 0u, nullptr);
 
 		for (uint32_t i = 0; i < log_2_N; ++i)
 		{
-			vkCmdPushConstants(compute.command_buffer, fft.pipelines.vertical.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
+			vkCmdPushConstants(compute.command_buffer, selected_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &i);
 			vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 
 			{
@@ -607,10 +624,11 @@ void SubgroupsOperations::build_compute_command_buffer()
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft_inversion.pipeline.pipeline : fft_inversion.pipeline_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft_inversion.pipeline.pipeline_layout : fft_inversion.pipeline_subgroups_off.pipeline_layout, 0u, 1u, &fft_inversion.descriptor_set, 0u, nullptr);
 #else
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft_inversion.pipeline.pipeline);
-#endif
 		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft_inversion.pipeline.pipeline_layout, 0u, 1u, &fft_inversion.descriptor_set, 0u, nullptr);
+#endif
 		vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 		{
 			VkImageMemoryBarrier img_barrier            = vkb::initializers::image_memory_barrier();
@@ -641,10 +659,11 @@ void SubgroupsOperations::build_compute_command_buffer()
 	{
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft_normal_map.pipeline.pipeline : fft_normal_map.pipeline_subgroups_off.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, ui.subgroups_enabled ? fft_normal_map.pipeline.pipeline_layout : fft_normal_map.pipeline_subgroups_off.pipeline_layout, 0u, 1u, &fft_normal_map.descriptor_set, 0u, nullptr);
 #else
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft_normal_map.pipeline.pipeline);
-#endif
 		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, fft_normal_map.pipeline.pipeline_layout, 0u, 1u, &fft_normal_map.descriptor_set, 0u, nullptr);
+#endif
 		vkCmdDispatch(compute.command_buffer, grid_size / 32u, grid_size, 1u);
 	}
 	if (ocean.graphics_queue_family_index != compute.queue_family_index)
@@ -672,7 +691,7 @@ void SubgroupsOperations::build_compute_command_buffer()
 	VK_CHECK(vkEndCommandBuffer(compute.command_buffer));
 }
 
-void SubgroupsOperations::request_gpu_features(vkb::PhysicalDevice &gpu)
+void SubgroupsOperations::request_gpu_features(vkb::core::PhysicalDeviceC &gpu)
 {
 	if (gpu.get_features().samplerAnisotropy)
 	{
@@ -749,12 +768,14 @@ void SubgroupsOperations::create_initial_tides()
 	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &initial_tildes.pipeline.pipeline_layout));
 
 	VkComputePipelineCreateInfo computeInfo = vkb::initializers::compute_pipeline_create_info(initial_tildes.pipeline.pipeline_layout);
-	computeInfo.stage                       = load_shader("subgroups_operations/fft_tilde_h0.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	computeInfo.stage                       = load_shader("subgroups_operations/fft_tilde_h0.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &initial_tildes.pipeline.pipeline));
 
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
-	computeInfo.stage = load_shader("subgroups_operations/fft_tilde_h0_subgroups_off.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &initial_tildes.pipeline_subgroups_off.pipeline_layout));
+	computeInfo.layout = initial_tildes.pipeline_subgroups_off.pipeline_layout;
+	computeInfo.stage = load_shader("subgroups_operations/fft_tilde_h0_subgroups_off.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &initial_tildes.pipeline_subgroups_off.pipeline));
 #endif
 
@@ -806,13 +827,15 @@ void SubgroupsOperations::create_tildas()
 	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &tildes.pipeline.pipeline_layout));
 
 	VkComputePipelineCreateInfo computeInfo = vkb::initializers::compute_pipeline_create_info(tildes.pipeline.pipeline_layout);
-	computeInfo.stage                       = load_shader("subgroups_operations/fft_tilde_h.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	computeInfo.stage                       = load_shader("subgroups_operations/fft_tilde_h.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &tildes.pipeline.pipeline));
 
 	
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
-	computeInfo.stage = load_shader("subgroups_operations/fft_tilde_h_subgroups_off.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &tildes.pipeline_subgroups_off.pipeline_layout));
+	computeInfo.layout = tildes.pipeline_subgroups_off.pipeline_layout;
+	computeInfo.stage = load_shader("subgroups_operations/fft_tilde_h_subgroups_off.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &tildes.pipeline_subgroups_off.pipeline));
 #endif
 
@@ -975,7 +998,8 @@ void SubgroupsOperations::setup_descriptor_pool()
 	std::vector<VkDescriptorPoolSize> pool_sizes = {
 	    vkb::initializers::descriptor_pool_size(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 20u),
 	    vkb::initializers::descriptor_pool_size(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 20u),
-	    vkb::initializers::descriptor_pool_size(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 20u)};
+	    vkb::initializers::descriptor_pool_size(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 20u),
+	    vkb::initializers::descriptor_pool_size(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20u)};
 	VkDescriptorPoolCreateInfo descriptor_pool_create_info =
 	    vkb::initializers::descriptor_pool_create_info(static_cast<uint32_t>(pool_sizes.size()), pool_sizes.data(), 15u);
 	VK_CHECK(vkCreateDescriptorPool(get_device().get_handle(), &descriptor_pool_create_info, nullptr, &descriptor_pool));
@@ -1081,10 +1105,10 @@ void SubgroupsOperations::create_pipelines()
 	VkPipelineTessellationStateCreateInfo tessellation_state = vkb::initializers::pipeline_tessellation_state_create_info(3u);
 
 	std::array<VkPipelineShaderStageCreateInfo, 4> shader_stages = {
-	    load_shader("subgroups_operations/ocean.vert", VK_SHADER_STAGE_VERTEX_BIT),
-	    load_shader("subgroups_operations/ocean.frag", VK_SHADER_STAGE_FRAGMENT_BIT),
-	    load_shader("subgroups_operations/ocean.tesc", VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT),
-	    load_shader("subgroups_operations/ocean.tese", VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT)};
+	    load_shader("subgroups_operations/ocean.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
+	    load_shader("subgroups_operations/ocean.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT),
+	    load_shader("subgroups_operations/ocean.tesc.spv", VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT),
+	    load_shader("subgroups_operations/ocean.tese.spv", VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT)};
 
 	const std::vector<VkVertexInputBindingDescription> vertex_input_bindings = {
 	    vkb::initializers::vertex_input_binding_description(0u, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX)};
@@ -1403,7 +1427,7 @@ void SubgroupsOperations::create_image_attachement(VkFormat format, uint32_t wid
 	VK_CHECK(vkCreateImage(get_device().get_handle(), &image, nullptr, &attachment.image));
 	vkGetImageMemoryRequirements(get_device().get_handle(), attachment.image, &memory_requirements);
 	memory_allocate_info.allocationSize  = memory_requirements.size;
-	memory_allocate_info.memoryTypeIndex = get_device().get_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	memory_allocate_info.memoryTypeIndex = get_device().get_gpu().get_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	VK_CHECK(vkAllocateMemory(get_device().get_handle(), &memory_allocate_info, nullptr, &attachment.memory));
 	VK_CHECK(vkBindImageMemory(get_device().get_handle(), attachment.image, attachment.memory, 0));
 
@@ -1487,12 +1511,14 @@ void SubgroupsOperations::create_butterfly_texture()
 	VkComputePipelineCreateInfo computeInfo = {};
 	computeInfo.sType                       = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 	computeInfo.layout                      = precompute.pipeline.pipeline_layout;
-	computeInfo.stage                       = load_shader("subgroups_operations/butterfly_precomp.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	computeInfo.stage                       = load_shader("subgroups_operations/butterfly_precomp.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &precompute.pipeline.pipeline));
 
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
-	computeInfo.stage = load_shader("subgroups_operations/butterfly_precomp_subgroups_off.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &precompute.pipeline_subgroups_off.pipeline_layout));
+	computeInfo.layout = precompute.pipeline_subgroups_off.pipeline_layout;
+	computeInfo.stage = load_shader("subgroups_operations/butterfly_precomp_subgroups_off.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &precompute.pipeline_subgroups_off.pipeline));
 #endif
 
@@ -1545,7 +1571,7 @@ void SubgroupsOperations::create_fft()
 	VkComputePipelineCreateInfo computeInfo = {};
 	computeInfo.sType                       = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 	computeInfo.layout                      = fft.pipelines.horizontal.pipeline_layout;
-	computeInfo.stage                       = load_shader("subgroups_operations/fft.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	computeInfo.stage                       = load_shader("subgroups_operations/fft.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 
 	std::array<VkSpecializationMapEntry, 1> specialization_map_entries = {};
 	VkSpecializationInfo                    spec_info;
@@ -1559,19 +1585,22 @@ void SubgroupsOperations::create_fft()
 
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft.pipelines.horizontal.pipeline));
 
-#ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
-	computeInfo.stage = load_shader("subgroups_operations/fft_subgroups_off.comp", VK_SHADER_STAGE_COMPUTE_BIT);
-	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft.pipelines.horizontal_subgroups_off.pipeline));
-	computeInfo.stage = load_shader("subgroups_operations/fft.comp", VK_SHADER_STAGE_COMPUTE_BIT);
-#endif
-
 	direction          = 1u;
 	computeInfo.layout = fft.pipelines.vertical.pipeline_layout;
 
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft.pipelines.vertical.pipeline));
 
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
-	computeInfo.stage = load_shader("subgroups_operations/fft_subgroups_off.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &fft.pipelines.horizontal_subgroups_off.pipeline_layout));
+	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &fft.pipelines.vertical_subgroups_off.pipeline_layout));
+	computeInfo.stage = load_shader("subgroups_operations/fft_subgroups_off.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+	direction          = 0u;
+	computeInfo.stage.pSpecializationInfo = &spec_info;
+	computeInfo.layout = fft.pipelines.horizontal_subgroups_off.pipeline_layout;
+	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft.pipelines.horizontal_subgroups_off.pipeline));
+	direction          = 1u;
+	computeInfo.stage.pSpecializationInfo = &spec_info;
+	computeInfo.layout = fft.pipelines.vertical_subgroups_off.pipeline_layout;
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft.pipelines.vertical_subgroups_off.pipeline));
 #endif
 
@@ -1639,12 +1668,14 @@ void SubgroupsOperations::create_fft_inversion()
 	VkComputePipelineCreateInfo computeInfo = {};
 	computeInfo.sType                       = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 	computeInfo.layout                      = fft_inversion.pipeline.pipeline_layout;
-	computeInfo.stage                       = load_shader("subgroups_operations/fft_invert.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	computeInfo.stage                       = load_shader("subgroups_operations/fft_invert.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft_inversion.pipeline.pipeline));
 
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
-	computeInfo.stage = load_shader("subgroups_operations/fft_invert_subgroups_off.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &fft_inversion.pipeline_subgroups_off.pipeline_layout));
+	computeInfo.layout = fft_inversion.pipeline_subgroups_off.pipeline_layout;
+	computeInfo.stage = load_shader("subgroups_operations/fft_invert_subgroups_off.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft_inversion.pipeline_subgroups_off.pipeline));
 
 #endif
@@ -1695,12 +1726,14 @@ void SubgroupsOperations::create_fft_normal_map()
 	VkComputePipelineCreateInfo computeInfo = {};
 	computeInfo.sType                       = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 	computeInfo.layout                      = fft_normal_map.pipeline.pipeline_layout;
-	computeInfo.stage                       = load_shader("subgroups_operations/fft_normal_map.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	computeInfo.stage                       = load_shader("subgroups_operations/fft_normal_map.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft_normal_map.pipeline.pipeline));
 
 #ifdef DEBUG_SUBGROUPS_SWITCH_ENABLE
-	computeInfo.stage = load_shader("subgroups_operations/fft_normal_map_subgroups_off.comp", VK_SHADER_STAGE_COMPUTE_BIT);
+	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &compute_pipeline_layout_info, nullptr, &fft_normal_map.pipeline_subgroups_off.pipeline_layout));
+	computeInfo.layout = fft_normal_map.pipeline_subgroups_off.pipeline_layout;
+	computeInfo.stage = load_shader("subgroups_operations/fft_normal_map_subgroups_off.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 	VK_CHECK(vkCreateComputePipelines(get_device().get_handle(), pipeline_cache, 1u, &computeInfo, nullptr, &fft_normal_map.pipeline_subgroups_off.pipeline));
 #endif
 

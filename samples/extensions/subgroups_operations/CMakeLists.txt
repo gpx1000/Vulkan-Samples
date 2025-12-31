@@ -40,4 +40,6 @@ add_sample(
          "subgroups_operations/fft_tilde_h_subgroups_off.comp"
          "subgroups_operations/fft_tilde_h0_subgroups_off.comp"
          "subgroups_operations/fft_normal_map_subgroups_off.comp"
-         "subgroups_operations/fft_subgroups_off.comp")
+         "subgroups_operations/fft_subgroups_off.comp"
+    GLSLC_ADDITIONAL_ARGUMENTS
+        "--target-spv=spv1.4")
