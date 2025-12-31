@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2024, Arm Limited and Contributors
+/* Copyright (c) 2019-2025, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -27,18 +27,19 @@
 
 namespace vkb
 {
-class Device;
-
 namespace core
 {
+template <vkb::BindingType bindingType>
+class Device;
+using DeviceC = Device<vkb::BindingType::C>;
 
 class Image;
 using ImagePtr = std::unique_ptr<Image>;
 
-struct ImageBuilder : public vkb::BuilderBaseC<ImageBuilder, VkImageCreateInfo>
+struct ImageBuilder : public vkb::allocated::BuilderBaseC<ImageBuilder, VkImageCreateInfo>
 {
   private:
-	using Parent = vkb::BuilderBaseC<ImageBuilder, VkImageCreateInfo>;
+	using Parent = vkb::allocated::BuilderBaseC<ImageBuilder, VkImageCreateInfo>;
 
   public:
 	ImageBuilder(VkExtent3D const &extent) :
@@ -67,12 +68,6 @@ struct ImageBuilder : public vkb::BuilderBaseC<ImageBuilder, VkImageCreateInfo>
 	ImageBuilder &with_usage(VkImageUsageFlags usage)
 	{
 		get_create_info().usage = usage;
-		return *this;
-	}
-
-	ImageBuilder &with_sharing_mode(VkSharingMode sharing_mode)
-	{
-		get_create_info().sharingMode = sharing_mode;
 		return *this;
 	}
 
@@ -112,16 +107,6 @@ struct ImageBuilder : public vkb::BuilderBaseC<ImageBuilder, VkImageCreateInfo>
 		return *this;
 	}
 
-	ImageBuilder &with_implicit_sharing_mode()
-	{
-		VkImageCreateInfo &create_info = get_create_info();
-		if (create_info.queueFamilyIndexCount != 0)
-		{
-			create_info.sharingMode = VK_SHARING_MODE_CONCURRENT;
-		}
-		return *this;
-	}
-
 	template <typename ExtensionType>
 	ImageBuilder &with_extension(ExtensionType &extension)
 	{
@@ -132,15 +117,16 @@ struct ImageBuilder : public vkb::BuilderBaseC<ImageBuilder, VkImageCreateInfo>
 		return *this;
 	}
 
-	Image    build(Device &device) const;
-	ImagePtr build_unique(Device &device) const;
+	Image    build(Device<vkb::BindingType::C> &device) const;
+	ImagePtr build_unique(Device<vkb::BindingType::C> &device) const;
 };
 
 class ImageView;
-class Image : public allocated::Allocated<VkImage>
+
+class Image : public vkb::allocated::AllocatedC<VkImage>
 {
   public:
-	Image(vkb::Device          &device,
+	Image(vkb::core::DeviceC   &device,
 	      VkImage               handle,
 	      const VkExtent3D     &extent,
 	      VkFormat              format,
@@ -149,7 +135,7 @@ class Image : public allocated::Allocated<VkImage>
 
 	// [[deprecated("Use the ImageBuilder ctor instead")]]
 	Image(
-	    vkb::Device          &device,
+	    vkb::core::DeviceC   &device,
 	    const VkExtent3D     &extent,
 	    VkFormat              format,
 	    VkImageUsageFlags     image_usage,
@@ -162,7 +148,7 @@ class Image : public allocated::Allocated<VkImage>
 	    uint32_t              num_queue_families = 0,
 	    const uint32_t       *queue_families     = nullptr);
 
-	Image(Device &device, ImageBuilder const &builder);
+	Image(vkb::core::DeviceC &device, ImageBuilder const &builder);
 
 	Image(const Image &) = delete;
 

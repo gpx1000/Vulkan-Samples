@@ -1,4 +1,5 @@
-/* Copyright (c) 2019-2024, Sascha Willems
+/* Copyright (c) 2019-2025, Sascha Willems
+ * Copyright (c) 2025, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -58,7 +59,7 @@ struct SwapchainBuffer
 struct Texture
 {
 	std::unique_ptr<vkb::sg::Image> image;
-	VkSampler                       sampler;
+	VkSampler                       sampler = VK_NULL_HANDLE;
 };
 
 /**
@@ -113,8 +114,6 @@ class ApiVulkanSample : public vkb::VulkanSampleC
 
 	virtual void update(float delta_time) override;
 
-	virtual void update_overlay(float delta_time, const std::function<void()> &additional_ui) override;
-
 	virtual bool resize(const uint32_t width, const uint32_t height) override;
 
 	virtual void render(float delta_time) = 0;
@@ -149,7 +148,7 @@ class ApiVulkanSample : public vkb::VulkanSampleC
 	std::vector<VkCommandBuffer> draw_cmd_buffers;
 
 	// Global render pass for frame buffer writes
-	VkRenderPass render_pass;
+	VkRenderPass render_pass = VK_NULL_HANDLE;
 
 	// List of available frame buffers (same as number of swap chain images)
 	std::vector<VkFramebuffer> framebuffers;
@@ -259,7 +258,7 @@ class ApiVulkanSample : public vkb::VulkanSampleC
 	 * @brief Synchronously execute a block code within a command buffer vkb wrapper, then submit the command buffer and wait for completion.
 	 * @param f a block of code which is passed a command buffer which is already in the begin state.
 	 */
-	void with_vkb_command_buffer(const std::function<void(vkb::CommandBuffer &command_buffer)> &f);
+	void with_vkb_command_buffer(const std::function<void(vkb::core::CommandBufferC &command_buffer)> &f);
 
   public:
 	/**
@@ -348,9 +347,8 @@ class ApiVulkanSample : public vkb::VulkanSampleC
 	 * @brief Load a SPIR-V shader
 	 * @param file The file location of the shader relative to the shaders folder
 	 * @param stage The shader stage
-	 * @param src_language The shader language
 	 */
-	VkPipelineShaderStageCreateInfo load_shader(const std::string &file, VkShaderStageFlagBits stage, vkb::ShaderSourceLanguage src_language = vkb::ShaderSourceLanguage::GLSL);
+	VkPipelineShaderStageCreateInfo load_shader(const std::string &file, VkShaderStageFlagBits stage);
 
 	/**
 	 * @brief Load a SPIR-V shader based on current shader language selection
@@ -363,8 +361,9 @@ class ApiVulkanSample : public vkb::VulkanSampleC
 	/**
 	 * @brief Updates the overlay
 	 * @param delta_time The time taken since the last frame
+	 * @param additional_ui Function that implements an additional Gui
 	 */
-	void update_overlay(float delta_time);
+	void update_overlay(float delta_time, const std::function<void()> &additional_ui) override;
 
 	/**
 	 * @brief If the gui is enabled, then record the drawing commands to a command buffer
@@ -440,11 +439,11 @@ class ApiVulkanSample : public vkb::VulkanSampleC
 	std::string title = "Vulkan Example";
 	std::string name  = "vulkanExample";
 
-	struct
+	struct ImageData
 	{
-		VkImage        image;
-		VkDeviceMemory mem;
-		VkImageView    view;
+		VkImage        image{VK_NULL_HANDLE};
+		VkDeviceMemory mem{VK_NULL_HANDLE};
+		VkImageView    view{VK_NULL_HANDLE};
 	} depth_stencil;
 
 	struct

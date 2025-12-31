@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2024, Sascha Willems
+/* Copyright (c) 2019-2025, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -57,7 +57,7 @@ PushDescriptors::~PushDescriptors()
 	}
 }
 
-void PushDescriptors::request_gpu_features(vkb::PhysicalDevice &gpu)
+void PushDescriptors::request_gpu_features(vkb::core::PhysicalDeviceC &gpu)
 {
 	// Enable anisotropic filtering if supported
 	if (gpu.get_features().samplerAnisotropy)
@@ -219,7 +219,6 @@ void PushDescriptors::prepare_pipelines()
 	    vkb::initializers::vertex_input_attribute_description(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0),                        // Location 0: Position
 	    vkb::initializers::vertex_input_attribute_description(0, 1, VK_FORMAT_R32G32B32_SFLOAT, sizeof(float) * 3),        // Location 1: Normal
 	    vkb::initializers::vertex_input_attribute_description(0, 2, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 6),           // Location 2: UV
-	    vkb::initializers::vertex_input_attribute_description(0, 3, VK_FORMAT_R32G32B32_SFLOAT, sizeof(float) * 8),        // Location 3: Color
 	};
 	VkPipelineVertexInputStateCreateInfo vertex_input_state = vkb::initializers::pipeline_vertex_input_state_create_info();
 	vertex_input_state.vertexBindingDescriptionCount        = static_cast<uint32_t>(vertex_input_bindings.size());
@@ -238,8 +237,8 @@ void PushDescriptors::prepare_pipelines()
 	pipeline_create_info.pDynamicState                = &dynamic_state;
 
 	const std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages = {
-	    load_shader("push_descriptors", "cube.vert", VK_SHADER_STAGE_VERTEX_BIT),
-	    load_shader("push_descriptors", "cube.frag", VK_SHADER_STAGE_FRAGMENT_BIT)};
+	    load_shader("push_descriptors", "cube.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
+	    load_shader("push_descriptors", "cube.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)};
 
 	pipeline_create_info.stageCount = static_cast<uint32_t>(shader_stages.size());
 	pipeline_create_info.pStages    = shader_stages.data();

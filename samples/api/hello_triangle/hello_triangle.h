@@ -1,4 +1,5 @@
-/* Copyright (c) 2018-2023, Arm Limited and Contributors
+/* Copyright (c) 2018-2025, Arm Limited and Contributors
+ * Copyright (c) 2025, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -47,19 +48,11 @@ class HelloTriangle : public vkb::Application
 	 */
 	struct PerFrame
 	{
-		VkDevice device = VK_NULL_HANDLE;
-
-		VkFence queue_submit_fence = VK_NULL_HANDLE;
-
-		VkCommandPool primary_command_pool = VK_NULL_HANDLE;
-
-		VkCommandBuffer primary_command_buffer = VK_NULL_HANDLE;
-
-		VkSemaphore swapchain_acquire_semaphore = VK_NULL_HANDLE;
-
-		VkSemaphore swapchain_release_semaphore = VK_NULL_HANDLE;
-
-		int32_t queue_index;
+		VkFence         queue_submit_fence          = VK_NULL_HANDLE;
+		VkCommandPool   primary_command_pool        = VK_NULL_HANDLE;
+		VkCommandBuffer primary_command_buffer      = VK_NULL_HANDLE;
+		VkSemaphore     swapchain_acquire_semaphore = VK_NULL_HANDLE;
+		VkSemaphore     swapchain_release_semaphore = VK_NULL_HANDLE;
 	};
 
 	/**
@@ -109,15 +102,33 @@ class HelloTriangle : public vkb::Application
 		 */
 		VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 
-		/// The debug report callback.
-		VkDebugReportCallbackEXT debug_callback = VK_NULL_HANDLE;
+		/// The debug utility callback.
+		VkDebugUtilsMessengerEXT debug_callback = VK_NULL_HANDLE;
 
 		/// A set of semaphores that can be reused.
 		std::vector<VkSemaphore> recycled_semaphores;
 
 		/// A set of per-frame data.
 		std::vector<PerFrame> per_frame;
+
+		VmaAllocator vma_allocator = VK_NULL_HANDLE;
 	};
+
+	/// Properties of the vertices used in this sample.
+	struct Vertex
+	{
+		glm::vec3 position;
+		glm::vec3 color;
+	};
+
+	/// The Vulkan buffer object that holds the vertex data for the triangle.
+	VkBuffer vertex_buffer = VK_NULL_HANDLE;
+
+	/// The device memory allocated for the vertex buffer.
+	VkDeviceMemory vertex_buffer_memory = VK_NULL_HANDLE;
+
+	/// Vulkan Memory Allocator (VMA) allocation info for the vertex buffer.
+	VmaAllocation vertex_buffer_allocation = VK_NULL_HANDLE;
 
   public:
 	HelloTriangle();
@@ -133,46 +144,36 @@ class HelloTriangle : public vkb::Application
 	bool validate_extensions(const std::vector<const char *>          &required,
 	                         const std::vector<VkExtensionProperties> &available);
 
-	bool validate_layers(const std::vector<const char *>      &required,
-	                     const std::vector<VkLayerProperties> &available);
+	void init_instance();
 
-	VkShaderStageFlagBits find_shader_stage(const std::string &ext);
+	void init_device();
 
-	void init_instance(Context                         &context,
-	                   const std::vector<const char *> &required_instance_extensions,
-	                   const std::vector<const char *> &required_validation_layers);
+	void init_vertex_buffer();
 
-	void init_device(Context                         &context,
-	                 const std::vector<const char *> &required_device_extensions);
+	void init_per_frame(PerFrame &per_frame);
 
-	void init_per_frame(Context &context, PerFrame &per_frame);
+	void teardown_per_frame(PerFrame &per_frame);
 
-	void teardown_per_frame(Context &context, PerFrame &per_frame);
+	void init_swapchain();
 
-	void init_swapchain(Context &context);
+	void init_render_pass();
 
-	void init_render_pass(Context &context);
+	VkShaderModule load_shader_module(const std::string &path);
 
-	VkShaderModule load_shader_module(Context &context, const char *path);
+	void init_pipeline();
 
-	void init_pipeline(Context &context);
+	VkResult acquire_next_image(uint32_t *image);
 
-	VkResult acquire_next_image(Context &context, uint32_t *image);
+	void render_triangle(uint32_t swapchain_index);
 
-	void render_triangle(Context &context, uint32_t swapchain_index);
+	VkResult present_image(uint32_t index);
 
-	VkResult present_image(Context &context, uint32_t index);
-
-	void init_framebuffers(Context &context);
-
-	void teardown_framebuffers(Context &context);
-
-	void teardown(Context &context);
+	void init_framebuffers();
 
   private:
 	Context context;
 
-	std::unique_ptr<vkb::Instance> vk_instance;
+	std::unique_ptr<vkb::core::InstanceC> vk_instance;
 };
 
 std::unique_ptr<vkb::Application> create_hello_triangle();

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2024, Arm Limited and Contributors
+/* Copyright (c) 2019-2025, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -96,10 +96,11 @@ void create_directory(const std::string &path)
 
 void create_path(const std::string &root, const std::string &path)
 {
-	for (auto it = path.begin(); it != path.end(); ++it)
+	std::filesystem::path full_path = std::filesystem::path(root) / path;
+
+	if (!vkb::filesystem::get()->create_directory(full_path))
 	{
-		it = std::find(it, path.end(), '/');
-		create_directory(root + std::string(path.begin(), it));
+		ERRORF("Failed to create directory: {}", full_path.string());
 	}
 }
 
@@ -108,14 +109,17 @@ std::vector<uint8_t> read_asset(const std::string &filename)
 	return vkb::filesystem::get()->read_file_binary(path::get(path::Type::Assets) + filename);
 }
 
-std::string read_shader(const std::string &filename)
+std::string read_text_file(const std::string &filename)
 {
 	return vkb::filesystem::get()->read_file_string(path::get(path::Type::Shaders) + filename);
 }
 
-std::vector<uint8_t> read_shader_binary(const std::string &filename)
+std::vector<uint32_t> read_shader_binary_u32(const std::string &filename)
 {
-	return vkb::filesystem::get()->read_file_binary(path::get(path::Type::Shaders) + filename);
+	auto buffer = vkb::filesystem::get()->read_file_binary(path::get(path::Type::Shaders) + filename);
+	assert(buffer.size() % sizeof(uint32_t) == 0);
+	auto spirv = std::vector<uint32_t>(reinterpret_cast<uint32_t *>(buffer.data()), reinterpret_cast<uint32_t *>(buffer.data()) + buffer.size() / sizeof(uint32_t));
+	return spirv;
 }
 
 std::vector<uint8_t> read_temp(const std::string &filename)

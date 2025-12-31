@@ -1,4 +1,5 @@
-/* Copyright (c) 2022-2024, Sascha Willems
+/* Copyright (c) 2022-2025, Sascha Willems
+ * Copyright (c) 2024-2025, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -30,14 +31,9 @@
 // The Vulkan Profiles library is part of the SDK and has been copied to the sample's folder for convenience
 #include "vulkan_profiles.hpp"
 
-// This sample uses the VP_LUNARG_desktop_portability_2021 profile that defines feature sets for common desktop platforms with drivers supporting Vulkan 1.1 on Windows and Linux, and the VP_LUNARG_desktop_portability_2021_subset profile on portability platforms like macOS
-#if (defined(VKB_ENABLE_PORTABILITY) && defined(VP_LUNARG_desktop_portability_2021_subset))
-#	define PROFILE_NAME VP_LUNARG_DESKTOP_PORTABILITY_2021_SUBSET_NAME
-#	define PROFILE_SPEC_VERSION VP_LUNARG_DESKTOP_PORTABILITY_2021_SUBSET_SPEC_VERSION
-#else
-#	define PROFILE_NAME VP_LUNARG_DESKTOP_PORTABILITY_2021_NAME
-#	define PROFILE_SPEC_VERSION VP_LUNARG_DESKTOP_PORTABILITY_2021_SPEC_VERSION
-#endif
+// This sample will use the Khronos roadmap 2022 profile which requires Vulkan 1.3
+// For details on what this profile requires/enables, see https://docs.vulkan.org/spec/latest/appendices/roadmap.html#roadmap-2022
+const VpProfileProperties profile_properties = {VP_KHR_ROADMAP_2022_NAME, VP_KHR_ROADMAP_2022_SPEC_VERSION};
 
 Profiles::Profiles()
 {
@@ -50,6 +46,8 @@ Profiles::~Profiles()
 	{
 		// Clean up used Vulkan resources
 		// Note : Inherited destructor cleans up resources stored in base class
+		for (auto &tex : textures)
+			vkFreeMemory(get_device().get_handle(), tex.memory, nullptr);
 
 		vkDestroyPipeline(get_device().get_handle(), pipeline, nullptr);
 
@@ -61,12 +59,22 @@ Profiles::~Profiles()
 
 // This sample overrides the device creation part of the framework
 // Instead of manually setting up all extensions, features, etc. we use the Vulkan Profiles library to simplify device setup
-std::unique_ptr<vkb::Device> Profiles::create_device(vkb::PhysicalDevice &gpu)
+std::unique_ptr<vkb::core::DeviceC> Profiles::create_device(vkb::core::PhysicalDeviceC &gpu)
 {
+	// Check if the profile is supported at device level
+	VkBool32 profile_supported;
+	vpGetPhysicalDeviceProfileSupport(get_instance().get_handle(), gpu.get_handle(), &profile_properties, &profile_supported);
+	if (!profile_supported)
+	{
+		throw std::runtime_error{"The selected profile is not supported (error at creating the device)!"};
+	}
+
+	// If the profile is supported, we can start setting things up and use the profiles library for that
+
 	// Simplified queue setup (only graphics)
 	uint32_t                selected_queue_family   = 0;
 	const auto             &queue_family_properties = gpu.get_queue_family_properties();
-	const float             default_queue_priority{0.0f};
+	const float             default_queue_priority{0.5f};
 	VkDeviceQueueCreateInfo queue_create_info{};
 	queue_create_info.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	queue_create_info.queueCount       = 1;
@@ -81,26 +89,21 @@ std::unique_ptr<vkb::Device> Profiles::create_device(vkb::PhysicalDevice &gpu)
 		}
 	}
 
+	std::vector<const char *> enabled_extensions;
+	enabled_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
 	VkDeviceCreateInfo create_info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-	create_info.pNext                = gpu.get_extension_feature_chain();
-	create_info.pQueueCreateInfos    = &queue_create_info;
-	create_info.queueCreateInfoCount = 1;
+	create_info.pNext                   = gpu.get_extension_feature_chain();
+	create_info.pQueueCreateInfos       = &queue_create_info;
+	create_info.queueCreateInfoCount    = 1;
+	create_info.enabledExtensionCount   = static_cast<uint32_t>(enabled_extensions.size());
+	create_info.ppEnabledExtensionNames = enabled_extensions.data();
 
-	const VpProfileProperties profile_properties = {PROFILE_NAME, PROFILE_SPEC_VERSION};
-
-	// Check if the profile is supported at device level
-	VkBool32 profile_supported;
-	vpGetPhysicalDeviceProfileSupport(get_instance().get_handle(), gpu.get_handle(), &profile_properties, &profile_supported);
-	if (!profile_supported)
-	{
-		throw std::runtime_error{"The selected profile is not supported (error at creating the device)!"};
-	}
-
-	// Create the device using the profile tool library
+	// Create the device using the profiles library
 	VpDeviceCreateInfo deviceCreateInfo{};
-	deviceCreateInfo.pCreateInfo = &create_info;
-	deviceCreateInfo.pProfile    = &profile_properties;
-	deviceCreateInfo.flags       = VP_DEVICE_CREATE_MERGE_EXTENSIONS_BIT;
+	deviceCreateInfo.pCreateInfo             = &create_info;
+	deviceCreateInfo.pEnabledFullProfiles    = &profile_properties;
+	deviceCreateInfo.enabledFullProfileCount = 1;
 	VkDevice vulkan_device;
 	VkResult result = vpCreateDevice(gpu.get_handle(), &deviceCreateInfo, nullptr, &vulkan_device);
 
@@ -110,9 +113,9 @@ std::unique_ptr<vkb::Device> Profiles::create_device(vkb::PhysicalDevice &gpu)
 	}
 
 	// Post device setup required for the framework
-	auto device = std::make_unique<vkb::Device>(gpu, vulkan_device, get_surface());
+	auto device = std::make_unique<vkb::core::DeviceC>(gpu, vulkan_device, get_surface());
 	device->add_queue(0, queue_create_info.queueFamilyIndex, queue_family_properties[selected_queue_family], true);
-	device->prepare_memory_allocator();
+	vkb::allocated::init(*device);        // prepare the memory allocator
 	device->create_internal_command_pool();
 	device->create_internal_fence_pool();
 
@@ -121,7 +124,7 @@ std::unique_ptr<vkb::Device> Profiles::create_device(vkb::PhysicalDevice &gpu)
 
 // This sample overrides the instance creation part of the framework
 // Instead of manually setting up all properties we use the Vulkan Profiles library to simplify instance setup
-std::unique_ptr<vkb::Instance> Profiles::create_instance(bool headless)
+std::unique_ptr<vkb::core::InstanceC> Profiles::create_instance()
 {
 	// Initialize Volk Vulkan Loader
 	VkResult result = volkInitialize();
@@ -129,8 +132,6 @@ std::unique_ptr<vkb::Instance> Profiles::create_instance(bool headless)
 	{
 		throw vkb::VulkanException(result, "Failed to initialize volk.");
 	}
-
-	const VpProfileProperties profile_properties = {PROFILE_NAME, PROFILE_SPEC_VERSION};
 
 	// Check if the profile is supported at instance level
 	VkBool32 profile_supported;
@@ -158,45 +159,33 @@ std::unique_ptr<vkb::Instance> Profiles::create_instance(bool headless)
 	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &instance_extension_count, available_instance_extensions.data()));
 
 	// If VK_KHR_portability_enumeration is available at runtime, enable the extension and flag for instance creation
-	if (std::any_of(available_instance_extensions.begin(),
-	                available_instance_extensions.end(),
-	                [](VkExtensionProperties const &extension) { return strcmp(extension.extensionName, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0; }))
+	if (std::ranges::any_of(available_instance_extensions,
+	                        [](VkExtensionProperties const &extension) { return strcmp(extension.extensionName, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0; }))
 	{
 		enabled_extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 		create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 	}
+#endif
 
-#	if defined(PLATFORM__MACOS) && TARGET_OS_OSX
-	// On macOS use layer setting to configure MoltenVK for using Metal argument buffers (needed for descriptor indexing/scaling)
-	VkLayerSettingEXT            layerSetting{};
-	const int32_t                useMetalArgumentBuffers = 1;
+#if defined(PLATFORM__MACOS)
+	// On Apple use layer setting to enable MoltenVK's Metal argument buffers - needed for descriptor indexing/scaling
+	enabled_extensions.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
+
+	VkLayerSettingEXT layerSetting{};
+	layerSetting.pLayerName   = "MoltenVK";
+	layerSetting.pSettingName = "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS";
+	layerSetting.type         = VK_LAYER_SETTING_TYPE_INT32_EXT;
+	layerSetting.valueCount   = 1;
+
+	const int32_t useMetalArgumentBuffers = 1;
+	layerSetting.pValues                  = &useMetalArgumentBuffers;
+
 	VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo{};
+	layerSettingsCreateInfo.sType        = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT;
+	layerSettingsCreateInfo.settingCount = 1;
+	layerSettingsCreateInfo.pSettings    = &layerSetting;
 
-	if (std::any_of(available_instance_extensions.begin(),
-	                available_instance_extensions.end(),
-	                [](VkExtensionProperties const &extension) { return strcmp(extension.extensionName, VK_EXT_LAYER_SETTINGS_EXTENSION_NAME) == 0; }))
-	{
-		enabled_extensions.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
-
-		layerSetting.pLayerName   = "MoltenVK";
-		layerSetting.pSettingName = "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS";
-		layerSetting.type         = VK_LAYER_SETTING_TYPE_INT32_EXT;
-		layerSetting.valueCount   = 1;
-		layerSetting.pValues      = &useMetalArgumentBuffers;
-
-		layerSettingsCreateInfo.sType        = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT;
-		layerSettingsCreateInfo.settingCount = 1;
-		layerSettingsCreateInfo.pSettings    = &layerSetting;
-
-		create_info.pNext = &layerSettingsCreateInfo;
-	}
-	else
-	{
-		// If layer settings is not available at runtime, set macOS environment variable for support of older Vulkan SDKs
-		// Will not work in batch mode, but is the best we can do short of using the deprecated MoltenVK private config API
-		setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
-	}
-#	endif
+	create_info.pNext = &layerSettingsCreateInfo;
 #endif
 
 	create_info.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -205,12 +194,11 @@ std::unique_ptr<vkb::Instance> Profiles::create_instance(bool headless)
 	// Note: We don't explicitly set an application info here so the one from the profile is used
 	// This also defines the api version to be used
 
-	// Create the instance using the profile tool library
-	// We set VP_INSTANCE_CREATE_MERGE_EXTENSIONS_BIT so the extensions defined in the profile will be merged with the extensions we specified manually
+	// Create the instance using the profiles library
 	VpInstanceCreateInfo instance_create_info{};
-	instance_create_info.pProfile    = &profile_properties;
-	instance_create_info.pCreateInfo = &create_info;
-	instance_create_info.flags       = VP_INSTANCE_CREATE_MERGE_EXTENSIONS_BIT;
+	instance_create_info.pEnabledFullProfiles    = &profile_properties;
+	instance_create_info.enabledFullProfileCount = 1;
+	instance_create_info.pCreateInfo             = &create_info;
 	VkInstance vulkan_instance;
 
 	result = vpCreateInstance(&instance_create_info, nullptr, &vulkan_instance);
@@ -222,7 +210,7 @@ std::unique_ptr<vkb::Instance> Profiles::create_instance(bool headless)
 
 	volkLoadInstance(vulkan_instance);
 
-	return std::make_unique<vkb::Instance>(vulkan_instance);
+	return std::make_unique<vkb::core::InstanceC>(vulkan_instance);
 }
 
 void Profiles::generate_textures()
@@ -253,7 +241,7 @@ void Profiles::generate_textures()
 	image_view.subresourceRange.baseArrayLayer = 0;
 	image_view.subresourceRange.layerCount     = 1;
 
-	auto staging_buffer = vkb::core::BufferC::create_staging_buffer(get_device(), image_info.extent.width * image_info.extent.height * sizeof(uint32_t));
+	auto staging_buffer = vkb::core::BufferC::create_staging_buffer(get_device(), image_info.extent.width * image_info.extent.height * sizeof(uint32_t), nullptr);
 
 	textures.resize(32);
 	for (size_t i = 0; i < textures.size(); i++)
@@ -263,7 +251,7 @@ void Profiles::generate_textures()
 		VkMemoryRequirements memory_requirements;
 		vkGetImageMemoryRequirements(get_device().get_handle(), textures[i].image, &memory_requirements);
 		memory_allocation_info.allocationSize  = memory_requirements.size;
-		memory_allocation_info.memoryTypeIndex = get_device().get_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		memory_allocation_info.memoryTypeIndex = get_device().get_gpu().get_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 		VK_CHECK(vkAllocateMemory(get_device().get_handle(), &memory_allocation_info, nullptr, &textures[i].memory));
 		VK_CHECK(vkBindImageMemory(get_device().get_handle(), textures[i].image, textures[i].memory, 0));
 		image_view.image = textures[i].image;
@@ -286,22 +274,23 @@ void Profiles::generate_textures()
 		staging_buffer.unmap();
 		staging_buffer.flush();
 
-		auto &cmd = get_device().request_command_buffer();
-		cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+		auto cmd = get_device().get_command_pool().request_command_buffer();
+		cmd->begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-		vkb::image_layout_transition(cmd.get_handle(), textures[i].image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		vkb::image_layout_transition(cmd->get_handle(), textures[i].image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		VkBufferImageCopy copy_info{};
 		copy_info.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
 		copy_info.imageExtent      = image_info.extent;
-		vkCmdCopyBufferToImage(cmd.get_handle(), staging_buffer.get_handle(), textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_info);
+		vkCmdCopyBufferToImage(cmd->get_handle(), staging_buffer.get_handle(), textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_info);
 
-		vkb::image_layout_transition(cmd.get_handle(), textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		vkb::image_layout_transition(cmd->get_handle(), textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		VK_CHECK(cmd.end());
+		cmd->end();
 
-		get_device().get_suitable_graphics_queue().submit(cmd, VK_NULL_HANDLE);
-		get_device().get_suitable_graphics_queue().wait_idle();
+		auto const &graphicsQueue = get_device().get_queue_by_flags(VK_QUEUE_GRAPHICS_BIT, 0);
+		graphicsQueue.submit(*cmd, VK_NULL_HANDLE);
+		graphicsQueue.wait_idle();
 	}
 
 	// Create immutable sampler for the textures
@@ -481,8 +470,10 @@ void Profiles::setup_descriptor_pool()
 void Profiles::setup_descriptor_set_layout()
 {
 	// We separate the descriptor sets for the uniform buffer + image and samplers, so we don't need to duplicate the descriptors for the former
-	VkDescriptorSetLayoutCreateInfo           descriptor_layout_create_info{};
 	std::vector<VkDescriptorSetLayoutBinding> set_layout_bindings{};
+
+	VkDescriptorSetLayoutCreateInfo descriptor_layout_create_info{};
+	descriptor_layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 
 	// Mark second slot as variable for descriptor indexing
 	VkDescriptorSetLayoutBindingFlagsCreateInfoEXT descriptor_set_layout_binding_flags{};
@@ -508,10 +499,8 @@ void Profiles::setup_descriptor_set_layout()
 	        VK_SHADER_STAGE_FRAGMENT_BIT,
 	        1,
 	        static_cast<uint32_t>(textures.size()))};
-	descriptor_layout_create_info =
-	    vkb::initializers::descriptor_set_layout_create_info(
-	        set_layout_bindings.data(),
-	        static_cast<uint32_t>(set_layout_bindings.size()));
+	descriptor_layout_create_info.bindingCount = static_cast<uint32_t>(set_layout_bindings.size());
+	descriptor_layout_create_info.pBindings    = set_layout_bindings.data();
 	VK_CHECK(vkCreateDescriptorSetLayout(get_device().get_handle(), &descriptor_layout_create_info, nullptr, &base_descriptor_set_layout));
 
 	// Set layout for the samplers
@@ -522,10 +511,8 @@ void Profiles::setup_descriptor_set_layout()
 	        VK_SHADER_STAGE_FRAGMENT_BIT,
 	        0,
 	        static_cast<uint32_t>(textures.size()))};
-	descriptor_layout_create_info =
-	    vkb::initializers::descriptor_set_layout_create_info(
-	        set_layout_bindings.data(),
-	        static_cast<uint32_t>(set_layout_bindings.size()));
+	descriptor_layout_create_info.bindingCount = static_cast<uint32_t>(set_layout_bindings.size());
+	descriptor_layout_create_info.pBindings    = set_layout_bindings.data();
 	VK_CHECK(vkCreateDescriptorSetLayout(get_device().get_handle(), &descriptor_layout_create_info, nullptr, &sampler_descriptor_set_layout));
 
 	// Pipeline layout
@@ -651,8 +638,8 @@ void Profiles::prepare_pipelines()
 
 	// Load shaders
 	std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages{};
-	shader_stages[0] = load_shader("profiles", "profiles.vert", VK_SHADER_STAGE_VERTEX_BIT);
-	shader_stages[1] = load_shader("profiles", "profiles.frag", VK_SHADER_STAGE_FRAGMENT_BIT);
+	shader_stages[0] = load_shader("profiles", "profiles.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+	shader_stages[1] = load_shader("profiles", "profiles.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	// Vertex bindings and attributes
 	const std::vector<VkVertexInputBindingDescription> vertex_input_bindings = {
@@ -748,7 +735,7 @@ void Profiles::view_changed()
 
 void Profiles::on_update_ui_overlay(vkb::Drawer &drawer)
 {
-	drawer.text("Enabled profile: %s", PROFILE_NAME);
+	drawer.text("Enabled profile: %s", profile_properties.profileName);
 }
 
 std::unique_ptr<vkb::Application> create_profiles()

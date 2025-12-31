@@ -1,5 +1,5 @@
 #[[
- Copyright (c) 2019-2024, Arm Limited and Contributors
+ Copyright (c) 2019-2025, Arm Limited and Contributors
 
  SPDX-License-Identifier: Apache-2.0
 
@@ -34,9 +34,75 @@ endif()
 if(APPLE)
     cmake_minimum_required(VERSION 3.24)
     set(VKB_ENABLE_PORTABILITY ON CACHE BOOL "Enable portability enumeration and subset features in the framework.  This is required to be set when running on Apple platforms." FORCE)
-if(IOS)
-    set(CMAKE_XCODE_GENERATE_SCHEME TRUE)
-endif()
+
+	find_package(Vulkan QUIET OPTIONAL_COMPONENTS MoltenVK)
+	if(USE_MoltenVK OR (IOS AND (NOT Vulkan_MoltenVK_FOUND OR ${CMAKE_OSX_SYSROOT} STREQUAL "iphonesimulator")))
+		# if using MoltenVK, or MoltenVK for iOS was not found, or using iOS Simulator, look for MoltenVK in the Vulkan SDK and MoltenVK project locations
+		if(NOT Vulkan_MoltenVK_LIBRARY)
+			# since both are available in the Vulkan SDK and MoltenVK github project, make sure we look for MoltenVK framework on iOS and dylib on macOS
+			set(_saved_cmake_find_framework ${CMAKE_FIND_FRAMEWORK})
+			if(IOS)
+				set(CMAKE_FIND_FRAMEWORK ALWAYS)
+			else()
+				set(CMAKE_FIND_FRAMEWORK NEVER)
+			endif()
+			find_library(Vulkan_MoltenVK_LIBRARY NAMES MoltenVK HINTS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/dynamic" "$ENV{VULKAN_SDK}/dylib/macOS")
+			set(CMAKE_FIND_FRAMEWORK ${_saved_cmake_find_framework})
+			unset(_saved_cmake_find_framework)
+		endif()
+
+		if(Vulkan_MoltenVK_LIBRARY)
+			get_filename_component(MoltenVK_LIBRARY_PATH ${Vulkan_MoltenVK_LIBRARY} DIRECTORY)
+
+			# For both iOS and macOS: set up global Vulkan Library defines so that MoltenVK is dynamically loaded versus the Vulkan loader
+			# on iOS we can control Vulkan library loading priority by selecting which libraries are embedded in the iOS application bundle
+			if(IOS)
+				add_compile_definitions(_HPP_VULKAN_LIBRARY="MoltenVK.framework/MoltenVK")
+				# unset FindVulkan.cmake cache variables so Vulkan loader, Validation Layer, and icd/layer json files are not embedded on iOS
+				unset(Vulkan_LIBRARY CACHE)
+				unset(Vulkan_Layer_VALIDATION CACHE)
+
+			# on macOS make sure that MoltenVK_LIBRARY_PATH points to the MoltenVK project installation and not to the Vulkan_LIBRARY location
+			# otherwise if DYLD_LIBRARY_PATH points to a common search path, Volk may dynamically load libvulkan.dylib versus libMoltenVK.dylib
+			elseif(NOT Vulkan_LIBRARY MATCHES "${MoltenVK_LIBRARY_PATH}")
+				add_compile_definitions(_HPP_VULKAN_LIBRARY="libMoltenVK.dylib")
+				add_compile_definitions(_GLFW_VULKAN_LIBRARY="libMoltenVK.dylib")
+				set(ENV{DYLD_LIBRARY_PATH} "${MoltenVK_LIBRARY_PATH}:$ENV{DYLD_LIBRARY_PATH}")
+			else()
+				message(FATAL_ERROR "Vulkan library found in MoltenVK search path. Please set VULKAN_SDK to the MoltenVK project install location.")
+			endif()
+			message(STATUS "Using MoltenVK: ${Vulkan_MoltenVK_LIBRARY}")
+		else()
+			message(FATAL_ERROR "Can't find MoltenVK library. Please install the Vulkan SDK or MoltenVK project and set VULKAN_SDK.")
+		endif()
+	elseif(IOS)
+		# if not using MoltenVK on iOS, set up global Vulkan Library define for iOS Vulkan loader
+		add_compile_definitions(_HPP_VULKAN_LIBRARY="vulkan.framework/vulkan")
+	endif()
+
+	if(CMAKE_GENERATOR MATCHES "Xcode")
+		set(CMAKE_XCODE_GENERATE_SCHEME ON)
+		set(CMAKE_XCODE_SCHEME_ENABLE_GPU_API_VALIDATION OFF)
+
+		if(NOT IOS)
+			# If the Vulkan library's or loader's environment variables are defined, make them available within Xcode schemes
+			if(DEFINED ENV{DYLD_LIBRARY_PATH})
+				set(CMAKE_XCODE_SCHEME_ENVIRONMENT "${CMAKE_XCODE_SCHEME_ENVIRONMENT};DYLD_LIBRARY_PATH=$ENV{DYLD_LIBRARY_PATH}")
+			endif()
+			if(DEFINED ENV{VK_ADD_LAYER_PATH})
+				set(CMAKE_XCODE_SCHEME_ENVIRONMENT "${CMAKE_XCODE_SCHEME_ENVIRONMENT};VK_ADD_LAYER_PATH=$ENV{VK_ADD_LAYER_PATH}")
+			endif()
+			if(DEFINED ENV{VK_ICD_FILENAMES})
+				set(CMAKE_XCODE_SCHEME_ENVIRONMENT "${CMAKE_XCODE_SCHEME_ENVIRONMENT};VK_ICD_FILENAMES=$ENV{VK_ICD_FILENAMES}")
+			endif()
+			if(DEFINED ENV{VK_DRIVER_FILES})
+				set(CMAKE_XCODE_SCHEME_ENVIRONMENT "${CMAKE_XCODE_SCHEME_ENVIRONMENT};VK_DRIVER_FILES=$ENV{VK_DRIVER_FILES}")
+			endif()
+
+			# Suppress regeneration for Xcode since environment variables will be lost if not set in Xcode locations/custom paths
+			set(CMAKE_SUPPRESS_REGENERATION ON)
+		endif()
+	endif()
 endif()
 
 set(VKB_WARNINGS_AS_ERRORS ON CACHE BOOL "Enable Warnings as Errors")
@@ -51,17 +117,16 @@ set(VKB_WSI_SELECTION "XCB" CACHE STRING "Select WSI target (XCB, XLIB, WAYLAND,
 set(VKB_CLANG_TIDY OFF CACHE STRING "Use CMake Clang Tidy integration")
 set(VKB_CLANG_TIDY_EXTRAS "-header-filter=framework,samples,app;-checks=-*,google-*,-google-runtime-references;--fix;--fix-errors" CACHE STRING "Clang Tidy Parameters")
 set(VKB_PROFILING OFF CACHE BOOL "Enable Tracy profiling")
+set(VKB_SKIP_SLANG_SHADER_COMPILATION OFF CACHE BOOL "Skips compilation for Slang shader")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "bin/${CMAKE_BUILD_TYPE}/${TARGET_ARCH}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "lib/${CMAKE_BUILD_TYPE}/${TARGET_ARCH}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "lib/${CMAKE_BUILD_TYPE}/${TARGET_ARCH}")
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
-
-string(LENGTH "${CMAKE_SOURCE_DIR}/" ROOT_PATH_SIZE)
-add_definitions(-DROOT_PATH_SIZE=${ROOT_PATH_SIZE})
 
 set(CMAKE_C_FLAGS_DEBUG   "-DDEBUG=0 ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG=0 ${CMAKE_CXX_FLAGS_DEBUG}")
