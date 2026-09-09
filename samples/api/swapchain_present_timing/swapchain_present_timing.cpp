@@ -810,11 +810,6 @@ void SwapchainPresentTiming::request_instance_extensions(std::unordered_map<std:
 
 SwapchainPresentTiming::SwapchainPresentTiming()
 {
-	// VK_EXT_present_timing dependencies
-	add_device_extension(VK_KHR_PRESENT_ID_2_EXTENSION_NAME);
-	add_device_extension(VK_EXT_PRESENT_TIMING_EXTENSION_NAME);
-	add_device_extension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
-
 	for (auto &timing : past_presentation_timings)
 	{
 		timing.sType             = VK_STRUCTURE_TYPE_PAST_PRESENTATION_TIMING_EXT;
@@ -870,6 +865,16 @@ SwapchainPresentTiming::~SwapchainPresentTiming()
 	{
 		vkDestroySwapchainKHR(get_device_handle(), swapchain, nullptr);
 	}
+}
+
+void SwapchainPresentTiming::request_device_extensions(std::unordered_map<std::string, vkb::RequestMode> &requested_extensions) const
+{
+	vkb::VulkanSampleC::request_device_extensions(requested_extensions);
+
+	// VK_EXT_present_timing dependencies
+	requested_extensions[VK_KHR_PRESENT_ID_2_EXTENSION_NAME]          = vkb::RequestMode::Required;
+	requested_extensions[VK_EXT_PRESENT_TIMING_EXTENSION_NAME]        = vkb::RequestMode::Required;
+	requested_extensions[VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME] = vkb::RequestMode::Required;
 }
 
 void SwapchainPresentTiming::request_gpu_features(vkb::core::PhysicalDeviceC &gpu)

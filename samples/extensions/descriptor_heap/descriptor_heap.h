@@ -32,6 +32,7 @@ class DescriptorHeap : public ApiVulkanSample
 	void create_command_pool() override;
 	void build_command_buffers() override;
 	void build_command_buffer();
+	void request_device_extensions(std::unordered_map<std::string, vkb::RequestMode> &requested_extensions) const override;
 	void request_gpu_features(vkb::core::PhysicalDeviceC &gpu) override;
 	void setup_render_pass() override;
 	void setup_framebuffer() override;

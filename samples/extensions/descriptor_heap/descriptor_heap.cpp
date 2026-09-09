@@ -21,12 +21,6 @@
 DescriptorHeap::DescriptorHeap()
 {
 	title = "Descriptor heap";
-
-	add_device_extension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-	add_device_extension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
-	add_device_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
-	add_device_extension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME);
-	add_device_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
 }
 
 DescriptorHeap::~DescriptorHeap()
@@ -64,6 +58,17 @@ bool DescriptorHeap::prepare(const vkb::ApplicationOptions &options)
 	prepared = true;
 
 	return true;
+}
+
+void DescriptorHeap::request_device_extensions(std::unordered_map<std::string, vkb::RequestMode> &requested_extensions) const
+{
+	ApiVulkanSample::request_device_extensions(requested_extensions);
+
+	requested_extensions[VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME] = vkb::RequestMode::Required;
+	requested_extensions[VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME]     = vkb::RequestMode::Required;
+	requested_extensions[VK_KHR_MAINTENANCE_5_EXTENSION_NAME]         = vkb::RequestMode::Required;
+	requested_extensions[VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME]       = vkb::RequestMode::Required;
+	requested_extensions[VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME]   = vkb::RequestMode::Required;
 }
 
 void DescriptorHeap::request_gpu_features(vkb::core::PhysicalDeviceC &gpu)

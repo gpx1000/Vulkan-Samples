@@ -29,13 +29,6 @@
 PipelineBinary::PipelineBinary()
 {
 	title = "Pipeline binary (VK_KHR_pipeline_binary)";
-
-	// Enable the device extension required by this sample
-	add_device_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME);
-	add_device_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
-	add_device_extension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
-	add_device_extension(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME);
-	add_device_extension(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME);
 }
 
 PipelineBinary::~PipelineBinary()
@@ -55,6 +48,18 @@ PipelineBinary::~PipelineBinary()
 			vkDestroyPipelineBinaryKHR(get_device().get_handle(), pipeline_binary, nullptr);
 		}
 	}
+}
+
+void PipelineBinary::request_device_extensions(std::unordered_map<std::string, vkb::RequestMode> &requested_extensions) const
+{
+	ApiVulkanSample::request_device_extensions(requested_extensions);
+
+	// Enable the device extension required by this sample
+	requested_extensions[VK_KHR_PIPELINE_BINARY_EXTENSION_NAME]       = vkb::RequestMode::Required;
+	requested_extensions[VK_KHR_MAINTENANCE_5_EXTENSION_NAME]         = vkb::RequestMode::Required;
+	requested_extensions[VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME]     = vkb::RequestMode::Required;
+	requested_extensions[VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME] = vkb::RequestMode::Required;
+	requested_extensions[VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME]   = vkb::RequestMode::Required;
 }
 
 void PipelineBinary::request_gpu_features(vkb::core::PhysicalDeviceC &gpu)
